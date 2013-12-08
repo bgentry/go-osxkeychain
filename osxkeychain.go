@@ -6,6 +6,7 @@ package osxkeychain
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
+#include "osxkeychain.h"
 */
 import "C"
 
@@ -38,6 +39,7 @@ type InternetPassword struct {
 	SecurityDomain string
 	AccountName    string
 	Path           string
+	Port           int // Use 0 to ignore
 	Password       string
 	Protocol       ProtocolType
 	AuthType       AuthenticationType
@@ -98,14 +100,15 @@ func getAuthenticationType(t AuthenticationType) (at int) {
 	return
 }
 
+// Adds an Internet password to the user's default keychain.
 func AddInternetPassword(pass *InternetPassword) error {
 	protocol := C.uint(getProtocolType(pass.Protocol))
-	authtype := C.uint(C.kSecAuthenticationTypeHTTPBasic)
+	authtype := C.uint(getAuthenticationType(pass.AuthType))
 	cpassword := C.CString(pass.Password)
 	var itemRef C.SecKeychainItemRef
 
 	errCode := C.SecKeychainAddInternetPassword(
-		nil,
+		nil, // default keychain
 		C.UInt32(len(pass.ServerName)),
 		C.CString(pass.ServerName),
 		C.UInt32(len(pass.SecurityDomain)),
@@ -114,7 +117,7 @@ func AddInternetPassword(pass *InternetPassword) error {
 		C.CString(pass.AccountName),
 		C.UInt32(len(pass.Path)),
 		C.CString(pass.Path),
-		0, // port
+		C.UInt16(pass.Port),
 		C.SecProtocolType(protocol),
 		C.SecAuthenticationType(authtype),
 		C.UInt32(len(pass.Password)),
@@ -130,5 +133,77 @@ func AddInternetPassword(pass *InternetPassword) error {
 	defer C.CFRelease(C.CFTypeRef(itemRef))
 
 	fmt.Println(itemRef)
+	return nil
+}
+
+// Finds the first Internet password item that matches the attributes you
+// provide in pass. Some attributes, such as ServerName and AccountName may be
+// left blank, in which case they will be ignored in the search.
+//
+// Returns an error if the lookup was unsuccessful.
+func FindInternetPassword(pass *InternetPassword) error {
+	protocol := C.uint(getProtocolType(pass.Protocol))
+	authtype := C.uint(C.kSecAuthenticationTypeHTTPBasic)
+	var cpassword unsafe.Pointer
+	var cpasslen C.UInt32
+	var itemRef C.SecKeychainItemRef
+
+	errCode := C.SecKeychainFindInternetPassword(
+		nil, // default keychain
+		C.UInt32(len(pass.ServerName)),
+		C.CString(pass.ServerName),
+		C.UInt32(len(pass.SecurityDomain)),
+		C.CString(pass.SecurityDomain),
+		C.UInt32(len(pass.AccountName)),
+		C.CString(pass.AccountName),
+		C.UInt32(len(pass.Path)),
+		C.CString(pass.Path),
+		C.UInt16(pass.Port),
+		C.SecProtocolType(protocol),
+		C.SecAuthenticationType(authtype),
+		&cpasslen,
+		&cpassword,
+		&itemRef,
+	)
+
+	if errCode != C.noErr {
+		if err, exists := resultCodes[int(errCode)]; exists {
+			return err
+		}
+		return fmt.Errorf("Unmapped result code: %d", errCode)
+	}
+	defer C.CFRelease(C.CFTypeRef(itemRef))
+	defer C.SecKeychainItemFreeContent(nil, cpassword)
+
+	cp2 := (**C.char)(cpassword)
+	buf := C.GoStringN(*cp2, C.int(cpasslen))
+	pass.Password = string(buf)
+
+	// Get remaining attributes
+	items := C.CFArrayCreateMutable(nil, 1, nil)
+	C.CFArrayAppendValue(items, unsafe.Pointer(itemRef))
+	dict := C.CFDictionaryCreateMutable(nil, 0, nil, nil)
+	C.CFDictionaryAddValue(dict, unsafe.Pointer(C.kSecClass), unsafe.Pointer(C.kSecClassInternetPassword))
+	C.CFDictionaryAddValue(dict, unsafe.Pointer(C.kSecMatchItemList), unsafe.Pointer(items))
+	C.CFDictionaryAddValue(dict, unsafe.Pointer(C.kSecReturnAttributes), unsafe.Pointer(C.kCFBooleanTrue))
+
+	var result C.CFTypeRef = nil
+	errCode = C.SecItemCopyMatching(dict, &result)
+	if errCode != C.noErr {
+		if err, exists := resultCodes[int(errCode)]; exists {
+			return err
+		}
+		return fmt.Errorf("Unmapped result code: %d", errCode)
+	}
+
+	// Get attributes out of result dictionary
+	resultdict := (C.CFDictionaryRef)(result)
+	val := C.CFDictionaryGetValue(resultdict, unsafe.Pointer(C.kSecAttrAccount))
+	if val != nil {
+		valcstr := (*C.char)(C.CFStringGetCStringPtr((C.CFStringRef)(val), C.kCFStringEncodingUTF8))
+		buf := C.GoString(valcstr)
+		pass.AccountName = string(buf)
+	}
+
 	return nil
 }
