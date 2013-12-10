@@ -181,8 +181,10 @@ func FindInternetPassword(pass *InternetPassword) error {
 
 	// Get remaining attributes
 	items := C.CFArrayCreateMutable(nil, 1, nil)
+	defer C.CFRelease(C.CFTypeRef(items))
 	C.CFArrayAppendValue(items, unsafe.Pointer(itemRef))
 	dict := C.CFDictionaryCreateMutable(nil, 0, nil, nil)
+	defer C.CFRelease(C.CFTypeRef(dict))
 	C.CFDictionaryAddValue(dict, unsafe.Pointer(C.kSecClass), unsafe.Pointer(C.kSecClassInternetPassword))
 	C.CFDictionaryAddValue(dict, unsafe.Pointer(C.kSecMatchItemList), unsafe.Pointer(items))
 	C.CFDictionaryAddValue(dict, unsafe.Pointer(C.kSecReturnAttributes), unsafe.Pointer(C.kCFBooleanTrue))
@@ -195,12 +197,14 @@ func FindInternetPassword(pass *InternetPassword) error {
 		}
 		return fmt.Errorf("Unmapped result code: %d", errCode)
 	}
+	defer C.CFRelease(result)
 
 	// Get attributes out of result dictionary
 	resultdict := (C.CFDictionaryRef)(result)
 	val := C.CFDictionaryGetValue(resultdict, unsafe.Pointer(C.kSecAttrAccount))
 	if val != nil {
 		valcstr := (*C.char)(C.CFStringGetCStringPtr((C.CFStringRef)(val), C.kCFStringEncodingUTF8))
+		defer C.CFRelease(C.CFTypeRef(valcstr))
 		buf := C.GoString(valcstr)
 		pass.AccountName = string(buf)
 	}
