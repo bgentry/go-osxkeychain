@@ -7,8 +7,9 @@ import (
 func TestInternetPassword(t *testing.T) {
 	passwordVal := "longfakepassword"
 	accountNameVal := "bgentry"
+	serverNameVal := "HK api.heroku.com"
 	pass := InternetPassword{
-		ServerName:     "HK api.heroku.com",
+		ServerName:     serverNameVal,
 		SecurityDomain: "api.heroku.com",
 		AccountName:    accountNameVal,
 		Path:           "/",
@@ -42,5 +43,8 @@ func TestInternetPassword(t *testing.T) {
 	}
 	if pass2.AccountName != accountNameVal {
 		t.Errorf("FindInternetPassword expected AccountName=%q, got %q", accountNameVal, pass2.AccountName)
+	}
+	if pass2.ServerName != serverNameVal {
+		t.Errorf("FindInternetPassword expected ServerName=%q, got %q", serverNameVal, pass2.ServerName)
 	}
 }
