@@ -21,6 +21,7 @@ type ProtocolType int
 const (
 	ProtocolHTTP ProtocolType = iota
 	ProtocolHTTPS
+	ProtocolAny
 )
 
 type AuthenticationType int
@@ -59,6 +60,7 @@ var (
 	ErrDuplicateCallback = errors.New("More than one callback of the same name exists.")
 	ErrInvalidCallback   = errors.New("The callback is not valid.")
 	ErrDuplicateItem     = errors.New("The item already exists.")
+	ErrItemNotFound      = errors.New("The item cannot be found.")
 )
 
 var resultCodes map[int]error = map[int]error{
@@ -74,9 +76,14 @@ var resultCodes map[int]error = map[int]error{
 	-25297: ErrDuplicateCallback,
 	-25298: ErrInvalidCallback,
 	-25299: ErrDuplicateItem,
+	-25300: ErrItemNotFound,
 }
 
-func getProtocolType(t ProtocolType) (pt int) {
+func fourCCtoString(code int) string {
+	return fmt.Sprintf("%c%c%c%c", 0xFF&(code>>24), 0xFF&(code>>16), 0xFF&(code>>8), 0xFF&(code))
+}
+
+func protocolTypeToC(t ProtocolType) (pt C.SecProtocolType) {
 	switch t {
 	case ProtocolHTTP:
 		pt = C.kSecProtocolTypeHTTP
@@ -88,7 +95,22 @@ func getProtocolType(t ProtocolType) (pt int) {
 	return
 }
 
-func getAuthenticationType(t AuthenticationType) (at int) {
+func protocolTypeToGo(proto C.CFTypeRef) ProtocolType {
+	if proto == nil {
+		// handle nil?
+		fmt.Println("nil proto in protocolTypeToGo")
+		return ProtocolAny
+	}
+	switch proto {
+	case C.kSecAttrProtocolHTTP:
+		return ProtocolHTTP
+	case C.kSecAttrProtocolHTTPS:
+		return ProtocolHTTPS
+	}
+	panic(fmt.Sprintf("unknown proto in protocolTypeToGo: %v", proto))
+}
+
+func authenticationTypeToC(t AuthenticationType) (at int) {
 	switch t {
 	case AuthenticationHTTPBasic:
 		at = C.kSecAuthenticationTypeHTTPBasic
@@ -100,10 +122,23 @@ func getAuthenticationType(t AuthenticationType) (at int) {
 	return
 }
 
+func authenticationTypeToGo(authtype C.CFTypeRef) AuthenticationType {
+	if authtype == nil {
+		// handle nil?
+		fmt.Println("nil authtype in authenticationTypeToGo")
+		return AuthenticationAny
+	}
+	switch authtype {
+	case C.kSecAttrAuthenticationTypeHTTPBasic:
+		return AuthenticationHTTPBasic
+	}
+	panic(fmt.Sprintf("unknown authtype in authenticationTypeToGo: %v", authtype))
+}
+
 // Adds an Internet password to the user's default keychain.
 func AddInternetPassword(pass *InternetPassword) error {
-	protocol := C.uint(getProtocolType(pass.Protocol))
-	authtype := C.uint(getAuthenticationType(pass.AuthType))
+	protocol := C.uint(protocolTypeToC(pass.Protocol))
+	authtype := C.uint(authenticationTypeToC(pass.AuthType))
 	cpassword := C.CString(pass.Password)
 	var itemRef C.SecKeychainItemRef
 
@@ -132,7 +167,6 @@ func AddInternetPassword(pass *InternetPassword) error {
 	}
 	defer C.CFRelease(C.CFTypeRef(itemRef))
 
-	fmt.Println(itemRef)
 	return nil
 }
 
@@ -141,9 +175,10 @@ func AddInternetPassword(pass *InternetPassword) error {
 // left blank, in which case they will be ignored in the search.
 //
 // Returns an error if the lookup was unsuccessful.
-func FindInternetPassword(pass *InternetPassword) error {
-	protocol := C.uint(getProtocolType(pass.Protocol))
-	authtype := C.uint(C.kSecAuthenticationTypeHTTPBasic)
+func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
+	resp := InternetPassword{}
+	protocol := protocolTypeToC(pass.Protocol)
+	authtype := C.SecAuthenticationType(C.kSecAuthenticationTypeHTTPBasic)
 	var cpassword unsafe.Pointer
 	var cpasslen C.UInt32
 	var itemRef C.SecKeychainItemRef
@@ -159,8 +194,8 @@ func FindInternetPassword(pass *InternetPassword) error {
 		C.UInt32(len(pass.Path)),
 		C.CString(pass.Path),
 		C.UInt16(pass.Port),
-		C.SecProtocolType(protocol),
-		C.SecAuthenticationType(authtype),
+		protocol,
+		authtype,
 		&cpasslen,
 		&cpassword,
 		&itemRef,
@@ -168,16 +203,16 @@ func FindInternetPassword(pass *InternetPassword) error {
 
 	if errCode != C.noErr {
 		if err, exists := resultCodes[int(errCode)]; exists {
-			return err
+			return nil, err
 		}
-		return fmt.Errorf("Unmapped result code: %d", errCode)
+		return nil, fmt.Errorf("Unmapped result code: %d", errCode)
 	}
 	defer C.CFRelease(C.CFTypeRef(itemRef))
 	defer C.SecKeychainItemFreeContent(nil, cpassword)
 
 	cp2 := (**C.char)(cpassword)
 	buf := C.GoStringN(*cp2, C.int(cpasslen))
-	pass.Password = string(buf)
+	resp.Password = string(buf)
 
 	// Get remaining attributes
 	items := C.CFArrayCreateMutable(nil, 1, nil)
@@ -193,21 +228,47 @@ func FindInternetPassword(pass *InternetPassword) error {
 	errCode = C.SecItemCopyMatching(dict, &result)
 	if errCode != C.noErr {
 		if err, exists := resultCodes[int(errCode)]; exists {
-			return err
+			return nil, err
 		}
-		return fmt.Errorf("Unmapped result code: %d", errCode)
+		return nil, fmt.Errorf("Unmapped result code: %d", errCode)
 	}
 	defer C.CFRelease(result)
 
-	// Get attributes out of result dictionary
-	resultdict := (C.CFDictionaryRef)(result)
-	val := C.CFDictionaryGetValue(resultdict, unsafe.Pointer(C.kSecAttrAccount))
+	// get attributes out of attribute dictionary
+	resultdict := (C.CFDictionaryRef)(result) // type cast attribute dictionary
+	resp.AccountName = getCFDictValueString(resultdict, C.kSecAttrAccount)
+	resp.ServerName = getCFDictValueString(resultdict, C.kSecAttrServer)
+	resp.SecurityDomain = getCFDictValueString(resultdict, C.kSecAttrSecurityDomain)
+	resp.Path = getCFDictValueString(resultdict, C.kSecAttrPath)
+
+	resp.Protocol = protocolTypeToGo((C.CFTypeRef)(
+		C.CFDictionaryGetValue(resultdict, unsafe.Pointer(C.kSecAttrProtocol)),
+	))
+	resp.AuthType = authenticationTypeToGo((C.CFTypeRef)(
+		C.CFDictionaryGetValue(resultdict, unsafe.Pointer(C.kSecAttrAuthenticationType)),
+	))
+
+	// TODO: extract port number. The CFNumberRef in the dict doesn't appear to
+	// have a value.
+	// 	portref := (C.CFNumberRef)(C.CFDictionaryGetValue(dict, unsafe.Pointer(C.kSecAttrPort)))
+	// 	if portref != nil {
+	// 		var portval unsafe.Pointer
+	// 		portsuccess := C.CFNumberGetValue(portref, C.kCFNumberCharType, portval)
+	// 	}
+
+	return &resp, nil
+}
+
+func getCFDictValueString(dict C.CFDictionaryRef, key C.CFTypeRef) string {
+	if (int)(C.CFDictionaryGetCountOfKey(dict, unsafe.Pointer(key))) == 0 {
+		fmt.Println("dict doesn't contain key", key)
+	}
+	// maybe try CFDictionaryGetValueIfPresent to handle non-existent keys?
+	val := C.CFDictionaryGetValue(dict, unsafe.Pointer(key))
 	if val != nil {
 		valcstr := (*C.char)(C.CFStringGetCStringPtr((C.CFStringRef)(val), C.kCFStringEncodingUTF8))
 		defer C.CFRelease(C.CFTypeRef(valcstr))
-		buf := C.GoString(valcstr)
-		pass.AccountName = string(buf)
+		return string(C.GoString(valcstr))
 	}
-
-	return nil
+	return ""
 }

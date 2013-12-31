@@ -7,15 +7,19 @@ import (
 func TestInternetPassword(t *testing.T) {
 	passwordVal := "longfakepassword"
 	accountNameVal := "bgentry"
-	serverNameVal := "HK api.heroku.com"
+	serverNameVal := "api.heroku.com"
+	securityDomainVal := ""
+	// 	portVal := 886
+	pathVal := "/fake"
 	pass := InternetPassword{
 		ServerName:     serverNameVal,
-		SecurityDomain: "api.heroku.com",
+		SecurityDomain: securityDomainVal,
 		AccountName:    accountNameVal,
-		Path:           "/",
-		Protocol:       ProtocolHTTPS,
-		AuthType:       AuthenticationHTTPBasic,
-		Password:       passwordVal,
+		// 		Port:           portVal,
+		Path:     pathVal,
+		Protocol: ProtocolHTTPS,
+		AuthType: AuthenticationHTTPBasic,
+		Password: passwordVal,
 	}
 	// Add the password
 	err := AddInternetPassword(&pass)
@@ -29,22 +33,37 @@ func TestInternetPassword(t *testing.T) {
 	}
 	// Find the password
 	pass2 := InternetPassword{
-		SecurityDomain: "api.heroku.com",
-		Path:           "/",
-		Protocol:       ProtocolHTTPS,
-		AuthType:       AuthenticationHTTPBasic,
+		ServerName: "api.heroku.com",
+		Path:       pathVal,
+		Protocol:   ProtocolHTTPS,
+		AuthType:   AuthenticationHTTPBasic,
 	}
-	err = FindInternetPassword(&pass2)
+	resp, err := FindInternetPassword(&pass2)
 	if err != nil {
 		t.Error(err)
 	}
-	if pass2.Password != passwordVal {
-		t.Errorf("FindInternetPassword expected Password=%q, got %q", passwordVal, pass2.Password)
+	if resp.Password != passwordVal {
+		t.Errorf("FindInternetPassword expected Password=%q, got %q", passwordVal, resp.Password)
 	}
-	if pass2.AccountName != accountNameVal {
-		t.Errorf("FindInternetPassword expected AccountName=%q, got %q", accountNameVal, pass2.AccountName)
+	if resp.AccountName != accountNameVal {
+		t.Errorf("FindInternetPassword expected AccountName=%q, got %q", accountNameVal, resp.AccountName)
 	}
-	if pass2.ServerName != serverNameVal {
-		t.Errorf("FindInternetPassword expected ServerName=%q, got %q", serverNameVal, pass2.ServerName)
+	if resp.ServerName != serverNameVal {
+		t.Errorf("FindInternetPassword expected ServerName=%q, got %q", serverNameVal, resp.ServerName)
+	}
+	if resp.SecurityDomain != securityDomainVal {
+		t.Errorf("FindInternetPassword expected SecurityDomain=%q, got %q", securityDomainVal, resp.SecurityDomain)
+	}
+	if resp.Protocol != ProtocolHTTPS {
+		t.Errorf("FindInternetPassword expected Protocol=https, got %q", resp.Protocol)
+	}
+	// 	if resp.Port != portVal {
+	// 		t.Errorf("FindInternetPassword expected Port=%d, got %d", portVal, resp.Port)
+	// 	}
+	if resp.AuthType != AuthenticationHTTPBasic {
+		t.Errorf("FindInternetPassword expected AuthType=HTTPBasic, got %q", resp.AuthType)
+	}
+	if resp.Path != pathVal {
+		t.Errorf("FindInternetPassword expected Path=%q, got %q", pathVal, resp.Path)
 	}
 }
