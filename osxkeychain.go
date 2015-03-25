@@ -140,6 +140,7 @@ func AddInternetPassword(pass *InternetPassword) error {
 	protocol := C.uint(protocolTypeToC(pass.Protocol))
 	authtype := C.uint(authenticationTypeToC(pass.AuthType))
 	cpassword := C.CString(pass.Password)
+	defer C.free(unsafe.Pointer(cpassword))
 	var itemRef C.SecKeychainItemRef
 
 	errCode := C.SecKeychainAddInternetPassword(
@@ -156,7 +157,7 @@ func AddInternetPassword(pass *InternetPassword) error {
 		C.SecProtocolType(protocol),
 		C.SecAuthenticationType(authtype),
 		C.UInt32(len(pass.Password)),
-		unsafe.Pointer(&cpassword),
+		unsafe.Pointer(cpassword),
 		&itemRef,
 	)
 	if errCode != C.noErr {
@@ -210,8 +211,7 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 	defer C.CFRelease(C.CFTypeRef(itemRef))
 	defer C.SecKeychainItemFreeContent(nil, cpassword)
 
-	cp2 := (**C.char)(cpassword)
-	buf := C.GoStringN(*cp2, C.int(cpasslen))
+	buf := C.GoStringN((*C.char)(cpassword), C.int(cpasslen))
 	resp.Password = string(buf)
 
 	// Get remaining attributes
