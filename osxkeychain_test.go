@@ -4,66 +4,71 @@ import (
 	"testing"
 )
 
-func TestInternetPassword(t *testing.T) {
-	passwordVal := "longfakepassword with \000 embedded nuls \000"
-	accountNameVal := "bgentry"
-	serverNameVal := "api.heroku.com"
-	securityDomainVal := ""
-	// 	portVal := 886
-	pathVal := "/fake"
-	pass := InternetPassword{
-		ServerName:     serverNameVal,
-		SecurityDomain: securityDomainVal,
-		AccountName:    accountNameVal,
-		// 		Port:           portVal,
-		Path:     pathVal,
-		Protocol: ProtocolHTTPS,
-		AuthType: AuthenticationHTTPBasic,
-		Password: passwordVal,
+func TestGenericPassword(t *testing.T) {
+	attributes := GenericPasswordAttributes{
+		ServiceName: "osxkeychain_test",
+		AccountName: "test account",
 	}
-	// Add the password
-	err := AddInternetPassword(&pass)
+
+	// Add with a blank password.
+	err := AddGenericPassword(&attributes)
 	if err != nil {
 		t.Error(err)
 	}
-	// Try adding again, expect it to fail as a duplicate
-	err = AddInternetPassword(&pass)
+
+	// Try adding again.
+	err = AddGenericPassword(&attributes)
 	if ke, ok := err.(*keychainError); !ok || ke.getErrCode() != errDuplicateItem {
-		t.Errorf("expected ErrDuplicateItem on 2nd save, got %s", err)
+		t.Errorf("expected ErrDuplicateItem, got %s", err)
 	}
-	// Find the password
-	pass2 := InternetPassword{
-		ServerName: "api.heroku.com",
-		Path:       pathVal,
-		Protocol:   ProtocolHTTPS,
-		AuthType:   AuthenticationHTTPBasic,
-	}
-	resp, err := FindInternetPassword(&pass2)
+
+	// Find the password.
+	password, err := FindGenericPassword(&attributes)
 	if err != nil {
 		t.Error(err)
 	}
-	if resp.Password != passwordVal {
-		t.Errorf("FindInternetPassword expected Password=%s, got %s", passwordVal, resp.Password)
+
+	if password != "" {
+		t.Errorf("FindGenericPassword expected empty string, got %s", password)
 	}
-	if resp.AccountName != accountNameVal {
-		t.Errorf("FindInternetPassword expected AccountName=%q, got %q", accountNameVal, resp.AccountName)
+
+	// Replace password with itself (a nil password).
+	err = ReplaceOrAddGenericPassword(&attributes)
+
+	// Replace password with an empty password.
+	attributes.Password = ""
+	err = ReplaceOrAddGenericPassword(&attributes)
+	if err != nil {
+		t.Error(err)
 	}
-	if resp.ServerName != serverNameVal {
-		t.Errorf("FindInternetPassword expected ServerName=%q, got %q", serverNameVal, resp.ServerName)
+
+	// Replace password with a non-empty password.
+	expectedPassword := "long test password \000 with embedded nuls \000"
+	attributes.Password = expectedPassword
+	err = ReplaceOrAddGenericPassword(&attributes)
+	if err != nil {
+		t.Error(err)
 	}
-	if resp.SecurityDomain != securityDomainVal {
-		t.Errorf("FindInternetPassword expected SecurityDomain=%q, got %q", securityDomainVal, resp.SecurityDomain)
+
+	// Find the password again.
+	password, err = FindGenericPassword(&attributes)
+	if err != nil {
+		t.Error(err)
 	}
-	if resp.Protocol != ProtocolHTTPS {
-		t.Errorf("FindInternetPassword expected Protocol=https, got %q", resp.Protocol)
+
+	if password != expectedPassword {
+		t.Errorf("FindGenericPassword expected %s, got %q", expectedPassword, password)
 	}
-	// 	if resp.Port != portVal {
-	// 		t.Errorf("FindInternetPassword expected Port=%d, got %d", portVal, resp.Port)
-	// 	}
-	if resp.AuthType != AuthenticationHTTPBasic {
-		t.Errorf("FindInternetPassword expected AuthType=HTTPBasic, got %q", resp.AuthType)
+
+	// Remove password.
+	err = FindAndRemoveGenericPassword(&attributes)
+	if err != nil {
+		t.Error(err)
 	}
-	if resp.Path != pathVal {
-		t.Errorf("FindInternetPassword expected Path=%q, got %q", pathVal, resp.Path)
+
+	// Try removing again.
+	err = FindAndRemoveGenericPassword(&attributes)
+	if ke, ok := err.(*keychainError); !ok || ke.getErrCode() != errItemNotFound {
+		t.Errorf("expected ErrItemNotFound, got %s", err)
 	}
 }
