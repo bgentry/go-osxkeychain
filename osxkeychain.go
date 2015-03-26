@@ -12,7 +12,6 @@ package osxkeychain
 import "C"
 
 import (
-	"errors"
 	"fmt"
 	"unsafe"
 )
@@ -47,47 +46,39 @@ type InternetPassword struct {
 	AuthType       AuthenticationType
 }
 
-// Error codes from https://developer.apple.com/library/mac/documentation/security/Reference/keychainservices/Reference/reference.html#//apple_ref/doc/uid/TP30000898-CH5g-CJBEABHG
-var (
-	ErrUnimplemented     = errors.New("Function or operation not implemented.")
-	ErrParam             = errors.New("One or more parameters passed to the function were not valid.")
-	ErrAllocate          = errors.New("Failed to allocate memory.")
-	ErrNotAvailable      = errors.New("No trust results are available.")
-	ErrReadOnly          = errors.New("Read only error.")
-	ErrAuthFailed        = errors.New("Authorization/Authentication failed.")
-	ErrNoSuchKeychain    = errors.New("The keychain does not exist.")
-	ErrInvalidKeychain   = errors.New("The keychain is not valid.")
-	ErrDuplicateKeychain = errors.New("A keychain with the same name already exists.")
-	ErrDuplicateCallback = errors.New("More than one callback of the same name exists.")
-	ErrInvalidCallback   = errors.New("The callback is not valid.")
-	ErrDuplicateItem     = errors.New("The item already exists.")
-	ErrItemNotFound      = errors.New("The item cannot be found.")
+type OSStatus C.OSStatus
+
+// TODO: Fill this out.
+const (
+	ErrDuplicateItem OSStatus = C.errSecDuplicateItem
 )
 
-var resultCodes map[int]error = map[int]error{
-	-4:     ErrUnimplemented,
-	-50:    ErrParam,
-	-108:   ErrAllocate,
-	-25291: ErrNotAvailable,
-	-25292: ErrReadOnly,
-	-25293: ErrAuthFailed,
-	-25294: ErrNoSuchKeychain,
-	-25295: ErrInvalidKeychain,
-	-25296: ErrDuplicateKeychain,
-	-25297: ErrDuplicateCallback,
-	-25298: ErrInvalidCallback,
-	-25299: ErrDuplicateItem,
-	-25300: ErrItemNotFound,
+type KeychainError struct {
+	errCode C.OSStatus
 }
 
-func errCodeToError(errCode C.OSStatus) error {
-	if errCode != C.noErr {
-		if err, exists := resultCodes[int(errCode)]; exists {
-			return err
-		}
-		return fmt.Errorf("Unmapped result code: %d", errCode)
+func NewKeychainError(errCode C.OSStatus) *KeychainError {
+	if errCode == C.noErr {
+		return nil
 	}
-	return nil
+	return &KeychainError{errCode}
+}
+
+func (ke *KeychainError) GetErrCode() OSStatus {
+	return OSStatus(ke.errCode)
+}
+
+func (ke *KeychainError) Error() string {
+	errorMessageCFString := C.SecCopyErrorMessageString(ke.errCode, nil)
+	defer C.CFRelease(C.CFTypeRef(errorMessageCFString))
+
+	errorMessageCString := C.CFStringGetCStringPtr(errorMessageCFString, C.kCFStringEncodingASCII)
+
+	if errorMessageCString != nil {
+		return C.GoString(errorMessageCString)
+	}
+
+	return fmt.Sprintf("KeychainError with unknown error code %d", ke.errCode)
 }
 
 func protocolTypeToC(t ProtocolType) (pt C.SecProtocolType) {
@@ -143,7 +134,7 @@ func authenticationTypeToGo(authtype C.CFTypeRef) AuthenticationType {
 }
 
 // Adds an Internet password to the user's default keychain.
-func AddInternetPassword(pass *InternetPassword) error {
+func AddInternetPassword(pass *InternetPassword) *KeychainError {
 	// TODO: Encode in UTF-8 first.
 	// TODO: Check for length overflowing 32 bits.
 	serverName := C.CString(pass.ServerName)
@@ -191,7 +182,7 @@ func AddInternetPassword(pass *InternetPassword) error {
 		nil,
 	)
 
-	return errCodeToError(errCode)
+	return NewKeychainError(errCode)
 }
 
 // Finds the first Internet password item that matches the attributes you
@@ -199,7 +190,7 @@ func AddInternetPassword(pass *InternetPassword) error {
 // left blank, in which case they will be ignored in the search.
 //
 // Returns an error if the lookup was unsuccessful.
-func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
+func FindInternetPassword(pass *InternetPassword) (*InternetPassword, *KeychainError) {
 	resp := InternetPassword{}
 	protocol := protocolTypeToC(pass.Protocol)
 	authtype := C.SecAuthenticationType(C.kSecAuthenticationTypeHTTPBasic)
@@ -225,7 +216,7 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 		&itemRef,
 	)
 
-	if err := errCodeToError(errCode); err != nil {
+	if err := NewKeychainError(errCode); err != nil {
 		return nil, err
 	}
 
@@ -247,7 +238,7 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 
 	var result C.CFTypeRef = nil
 	errCode = C.SecItemCopyMatching(dict, &result)
-	if err := errCodeToError(errCode); err != nil {
+	if err := NewKeychainError(errCode); err != nil {
 		return nil, err
 	}
 	defer C.CFRelease(result)
