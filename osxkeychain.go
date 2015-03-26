@@ -41,7 +41,7 @@ type InternetPassword struct {
 	AccountName    string
 	Path           string
 	Port           int // Use 0 to ignore
-	Password       string
+	Password       []byte
 	Protocol       ProtocolType
 	AuthType       AuthenticationType
 }
@@ -161,8 +161,10 @@ func AddInternetPassword(pass *InternetPassword) *KeychainError {
 	authtype := C.uint(authenticationTypeToC(pass.AuthType))
 
 	// TODO: Check for length overflowing 32 bits.
-	password := C.CString(pass.Password)
-	defer C.free(unsafe.Pointer(password))
+	var password unsafe.Pointer
+	if len(pass.Password) > 0 {
+		password = unsafe.Pointer(&pass.Password[0])
+	}
 
 	errCode := C.SecKeychainAddInternetPassword(
 		nil, // default keychain
@@ -248,7 +250,7 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, *KeychainE
 	defer C.SecKeychainItemFreeContent(nil, password)
 
 	resp := InternetPassword{}
-	resp.Password = C.GoStringN((*C.char)(password), C.int(passwordLength))
+	resp.Password = C.GoBytes(password, C.int(passwordLength))
 
 	// TODO: Audit the code below.
 
