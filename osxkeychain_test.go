@@ -5,7 +5,7 @@ import (
 )
 
 func TestInternetPassword(t *testing.T) {
-	passwordVal := "longfakepassword"
+	passwordVal := "longfakepassword with emoji 🍻 and \000 embedded nuls \000"
 	accountNameVal := "bgentry"
 	serverNameVal := "go-osxkeychain-test.example.com"
 	securityDomainVal := ""
@@ -43,7 +43,7 @@ func TestInternetPassword(t *testing.T) {
 		t.Error(err)
 	}
 	if resp.Password != passwordVal {
-		t.Errorf("FindInternetPassword expected Password=%q, got %q", passwordVal, resp.Password)
+		t.Errorf("FindInternetPassword expected Password=%s, got %s", passwordVal, resp.Password)
 	}
 	if resp.AccountName != accountNameVal {
 		t.Errorf("FindInternetPassword expected AccountName=%q, got %q", accountNameVal, resp.AccountName)
