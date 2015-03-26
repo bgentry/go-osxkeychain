@@ -134,36 +134,59 @@ func authenticationTypeToGo(authtype C.CFTypeRef) AuthenticationType {
 
 // Adds an Internet password to the user's default keychain.
 func AddInternetPassword(pass *InternetPassword) error {
+	// TODO: Encode in UTF-8 first.
+	// TODO: Check for length overflowing 32 bits.
+	serverName := C.CString(pass.ServerName)
+	defer C.free(unsafe.Pointer(serverName))
+
+	// TODO: Make optional.
+	// TODO: Encode in UTF-8 first.
+	// TODO: Check for length overflowing 32 bits.
+	securityDomain := C.CString(pass.SecurityDomain)
+	defer C.free(unsafe.Pointer(securityDomain))
+
+	// TODO: Encode in UTF-8 first.
+	// TODO: Check for length overflowing 32 bits.
+	accountName := C.CString(pass.AccountName)
+	defer C.free(unsafe.Pointer(accountName))
+
+	// TODO: Encode in UTF-8 first.
+	// TODO: Check for length overflowing 32 bits.
+	path := C.CString(pass.Path)
+	defer C.free(unsafe.Pointer(path))
+	
 	protocol := C.uint(protocolTypeToC(pass.Protocol))
+
 	authtype := C.uint(authenticationTypeToC(pass.AuthType))
-	cpassword := C.CString(pass.Password)
-	defer C.free(unsafe.Pointer(cpassword))
-	var itemRef C.SecKeychainItemRef
+
+	// TODO: Check for length overflowing 32 bits.
+	password := C.CString(pass.Password)
+	defer C.free(unsafe.Pointer(password))
 
 	errCode := C.SecKeychainAddInternetPassword(
 		nil, // default keychain
 		C.UInt32(len(pass.ServerName)),
-		C.CString(pass.ServerName),
+		serverName,
 		C.UInt32(len(pass.SecurityDomain)),
-		C.CString(pass.SecurityDomain),
+		securityDomain,
 		C.UInt32(len(pass.AccountName)),
-		C.CString(pass.AccountName),
+		accountName,
 		C.UInt32(len(pass.Path)),
-		C.CString(pass.Path),
+		path,
 		C.UInt16(pass.Port),
 		C.SecProtocolType(protocol),
 		C.SecAuthenticationType(authtype),
 		C.UInt32(len(pass.Password)),
-		unsafe.Pointer(cpassword),
-		&itemRef,
+		unsafe.Pointer(password),
+		nil,
 	)
+
 	if errCode != C.noErr {
 		if err, exists := resultCodes[int(errCode)]; exists {
 			return err
 		}
 		return fmt.Errorf("Unmapped result code: %d", errCode)
 	}
-	defer C.CFRelease(C.CFTypeRef(itemRef))
 
 	return nil
 }
