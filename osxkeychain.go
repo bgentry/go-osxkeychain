@@ -80,6 +80,16 @@ var resultCodes map[int]error = map[int]error{
 	-25300: ErrItemNotFound,
 }
 
+func errCodeToError(errCode C.OSStatus) error {
+	if errCode != C.noErr {
+		if err, exists := resultCodes[int(errCode)]; exists {
+			return err
+		}
+		return fmt.Errorf("Unmapped result code: %d", errCode)
+	}
+	return nil
+}
+
 func protocolTypeToC(t ProtocolType) (pt C.SecProtocolType) {
 	switch t {
 	case ProtocolHTTP:
@@ -181,14 +191,7 @@ func AddInternetPassword(pass *InternetPassword) error {
 		nil,
 	)
 
-	if errCode != C.noErr {
-		if err, exists := resultCodes[int(errCode)]; exists {
-			return err
-		}
-		return fmt.Errorf("Unmapped result code: %d", errCode)
-	}
-
-	return nil
+	return errCodeToError(errCode)
 }
 
 // Finds the first Internet password item that matches the attributes you
@@ -222,12 +225,10 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 		&itemRef,
 	)
 
-	if errCode != C.noErr {
-		if err, exists := resultCodes[int(errCode)]; exists {
-			return nil, err
-		}
-		return nil, fmt.Errorf("Unmapped result code: %d", errCode)
+	if err := errCodeToError(errCode); err != nil {
+		return nil, err
 	}
+
 	defer C.CFRelease(C.CFTypeRef(itemRef))
 	defer C.SecKeychainItemFreeContent(nil, cpassword)
 
@@ -246,11 +247,8 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 
 	var result C.CFTypeRef = nil
 	errCode = C.SecItemCopyMatching(dict, &result)
-	if errCode != C.noErr {
-		if err, exists := resultCodes[int(errCode)]; exists {
-			return nil, err
-		}
-		return nil, fmt.Errorf("Unmapped result code: %d", errCode)
+	if err := errCodeToError(errCode); err != nil {
+		return nil, err
 	}
 	defer C.CFRelease(result)
 
