@@ -250,6 +250,8 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, *KeychainE
 	resp := InternetPassword{}
 	resp.Password = C.GoStringN((*C.char)(password), C.int(passwordLength))
 
+	// TODO: Audit the code below.
+
 	// Get remaining attributes
 	items := C.CFArrayCreateMutable(nil, 1, nil)
 	defer C.CFRelease(C.CFTypeRef(items))
