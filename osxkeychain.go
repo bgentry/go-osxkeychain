@@ -223,28 +223,39 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 		return nil, err
 	}
 
-	resp := InternetPassword{}
-	protocol := protocolTypeToC(pass.Protocol)
-	authtype := C.SecAuthenticationType(C.kSecAuthenticationTypeHTTPBasic)
-	var cpassword unsafe.Pointer
-	var cpasslen C.UInt32
+	serverName := C.CString(pass.ServerName)
+	defer C.free(unsafe.Pointer(serverName))
+
+	securityDomain := C.CString(pass.SecurityDomain)
+	defer C.free(unsafe.Pointer(securityDomain))
+
+	accountName := C.CString(pass.AccountName)
+	defer C.free(unsafe.Pointer(accountName))
+
+	path := C.CString(pass.Path)
+	defer C.free(unsafe.Pointer(path))
+
+	protocol := C.uint(protocolTypeToC(pass.Protocol))
+	authtype := C.uint(authenticationTypeToC(pass.AuthType))
+	var passwordLength C.UInt32
+	var password unsafe.Pointer
 	var itemRef C.SecKeychainItemRef
 
 	errCode := C.SecKeychainFindInternetPassword(
 		nil, // default keychain
 		C.UInt32(len(pass.ServerName)),
-		C.CString(pass.ServerName),
+		serverName,
 		C.UInt32(len(pass.SecurityDomain)),
-		C.CString(pass.SecurityDomain),
+		securityDomain,
 		C.UInt32(len(pass.AccountName)),
-		C.CString(pass.AccountName),
+		accountName,
 		C.UInt32(len(pass.Path)),
-		C.CString(pass.Path),
+		path,
 		C.UInt16(pass.Port),
-		protocol,
-		authtype,
-		&cpasslen,
-		&cpassword,
+		C.SecProtocolType(protocol),
+		C.SecAuthenticationType(authtype),
+		&passwordLength,
+		&password,
 		&itemRef,
 	)
 
@@ -253,10 +264,10 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 	}
 
 	defer C.CFRelease(C.CFTypeRef(itemRef))
-	defer C.SecKeychainItemFreeContent(nil, cpassword)
+	defer C.SecKeychainItemFreeContent(nil, password)
 
-	buf := C.GoStringN((*C.char)(cpassword), C.int(cpasslen))
-	resp.Password = string(buf)
+	resp := InternetPassword{}
+	resp.Password = C.GoStringN((*C.char)(password), C.int(passwordLength))
 
 	// Get remaining attributes
 	items := C.CFArrayCreateMutable(nil, 1, nil)
