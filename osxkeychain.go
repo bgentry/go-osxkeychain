@@ -79,10 +79,6 @@ var resultCodes map[int]error = map[int]error{
 	-25300: ErrItemNotFound,
 }
 
-func fourCCtoString(code int) string {
-	return fmt.Sprintf("%c%c%c%c", 0xFF&(code>>24), 0xFF&(code>>16), 0xFF&(code>>8), 0xFF&(code))
-}
-
 func protocolTypeToC(t ProtocolType) (pt C.SecProtocolType) {
 	switch t {
 	case ProtocolHTTP:
