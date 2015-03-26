@@ -46,29 +46,29 @@ type InternetPassword struct {
 	AuthType       AuthenticationType
 }
 
-type OSStatus C.OSStatus
+type _OSStatus C.OSStatus
 
 // TODO: Fill this out.
 const (
-	ErrDuplicateItem OSStatus = C.errSecDuplicateItem
+	errDuplicateItem _OSStatus = C.errSecDuplicateItem
 )
 
-type KeychainError struct {
+type keychainError struct {
 	errCode C.OSStatus
 }
 
-func NewKeychainError(errCode C.OSStatus) *KeychainError {
+func newKeychainError(errCode C.OSStatus) error {
 	if errCode == C.noErr {
 		return nil
 	}
-	return &KeychainError{errCode}
+	return &keychainError{errCode}
 }
 
-func (ke *KeychainError) GetErrCode() OSStatus {
-	return OSStatus(ke.errCode)
+func (ke *keychainError) getErrCode() _OSStatus {
+	return _OSStatus(ke.errCode)
 }
 
-func (ke *KeychainError) Error() string {
+func (ke *keychainError) Error() string {
 	errorMessageCFString := C.SecCopyErrorMessageString(ke.errCode, nil)
 	defer C.CFRelease(C.CFTypeRef(errorMessageCFString))
 
@@ -78,7 +78,7 @@ func (ke *KeychainError) Error() string {
 		return C.GoString(errorMessageCString)
 	}
 
-	return fmt.Sprintf("KeychainError with unknown error code %d", ke.errCode)
+	return fmt.Sprintf("keychainError with unknown error code %d", ke.errCode)
 }
 
 func protocolTypeToC(t ProtocolType) (pt C.SecProtocolType) {
@@ -134,7 +134,7 @@ func authenticationTypeToGo(authtype C.CFTypeRef) AuthenticationType {
 }
 
 // Adds an Internet password to the user's default keychain.
-func AddInternetPassword(pass *InternetPassword) *KeychainError {
+func AddInternetPassword(pass *InternetPassword) error {
 	// TODO: Encode in UTF-8 first.
 	// TODO: Check for length overflowing 32 bits.
 	serverName := C.CString(pass.ServerName)
@@ -184,7 +184,7 @@ func AddInternetPassword(pass *InternetPassword) *KeychainError {
 		nil,
 	)
 
-	return NewKeychainError(errCode)
+	return newKeychainError(errCode)
 }
 
 // Finds the first Internet password item that matches the attributes you
@@ -192,7 +192,7 @@ func AddInternetPassword(pass *InternetPassword) *KeychainError {
 // left blank, in which case they will be ignored in the search.
 //
 // Returns an error if the lookup was unsuccessful.
-func FindInternetPassword(pass *InternetPassword) (*InternetPassword, *KeychainError) {
+func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 	// TODO: Encode in UTF-8 first.
 	// TODO: Check for length overflowing 32 bits.
 	serverName := C.CString(pass.ServerName)
@@ -242,7 +242,7 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, *KeychainE
 		&itemRef,
 	)
 
-	if err := NewKeychainError(errCode); err != nil {
+	if err := newKeychainError(errCode); err != nil {
 		return nil, err
 	}
 
@@ -266,7 +266,7 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, *KeychainE
 
 	var result C.CFTypeRef = nil
 	errCode = C.SecItemCopyMatching(dict, &result)
-	if err := NewKeychainError(errCode); err != nil {
+	if err := newKeychainError(errCode); err != nil {
 		return nil, err
 	}
 	defer C.CFRelease(result)
