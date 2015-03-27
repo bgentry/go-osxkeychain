@@ -19,7 +19,7 @@ func TestInternetPassword(t *testing.T) {
 		Path:     pathVal,
 		Protocol: ProtocolHTTPS,
 		AuthType: AuthenticationHTTPBasic,
-		Password: []byte(passwordVal),
+		Password: passwordVal,
 	}
 	// Add the password
 	err := AddInternetPassword(&pass)
