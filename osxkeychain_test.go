@@ -42,8 +42,8 @@ func TestInternetPassword(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	if string(resp.Password) != passwordVal {
-		t.Errorf("FindInternetPassword expected Password=%s, got %s", passwordVal, string(resp.Password))
+	if resp.Password != passwordVal {
+		t.Errorf("FindInternetPassword expected Password=%s, got %s", passwordVal, resp.Password)
 	}
 	if resp.AccountName != accountNameVal {
 		t.Errorf("FindInternetPassword expected AccountName=%q, got %q", accountNameVal, resp.AccountName)
