@@ -35,6 +35,9 @@ const (
 // A password for an Internet server, such as a Web or FTP server. Internet
 // password items on the keychain include attributes such as the security domain
 // and IP address.
+//
+// All string fields must have size that fits in 32 bits. All string
+// fields except for Password must be encoded in UTF-8.
 type InternetPassword struct {
 	ServerName     string
 	SecurityDomain string
@@ -135,24 +138,19 @@ func authenticationTypeToGo(authtype C.CFTypeRef) AuthenticationType {
 
 // Adds an Internet password to the user's default keychain.
 func AddInternetPassword(pass *InternetPassword) error {
-	// TODO: Encode in UTF-8 first.
-	// TODO: Check for length overflowing 32 bits.
+	// TODO: Check fields for UTF-8 encoding and size fitting in
+	// 32 bits.
+
 	serverName := C.CString(pass.ServerName)
 	defer C.free(unsafe.Pointer(serverName))
 
 	// TODO: Make optional.
-	// TODO: Encode in UTF-8 first.
-	// TODO: Check for length overflowing 32 bits.
 	securityDomain := C.CString(pass.SecurityDomain)
 	defer C.free(unsafe.Pointer(securityDomain))
 
-	// TODO: Encode in UTF-8 first.
-	// TODO: Check for length overflowing 32 bits.
 	accountName := C.CString(pass.AccountName)
 	defer C.free(unsafe.Pointer(accountName))
 
-	// TODO: Encode in UTF-8 first.
-	// TODO: Check for length overflowing 32 bits.
 	path := C.CString(pass.Path)
 	defer C.free(unsafe.Pointer(path))
 
@@ -160,7 +158,6 @@ func AddInternetPassword(pass *InternetPassword) error {
 
 	authtype := C.uint(authenticationTypeToC(pass.AuthType))
 
-	// TODO: Check for length overflowing 32 bits.
 	password := unsafe.Pointer(C.CString(pass.Password))
 	defer C.free(password)
 
@@ -191,24 +188,19 @@ func AddInternetPassword(pass *InternetPassword) error {
 //
 // Returns an error if the lookup was unsuccessful.
 func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
-	// TODO: Encode in UTF-8 first.
-	// TODO: Check for length overflowing 32 bits.
+	// TODO: Check fields for UTF-8 encoding and size fitting in
+	// 32 bits.
+
 	serverName := C.CString(pass.ServerName)
 	defer C.free(unsafe.Pointer(serverName))
 
 	// TODO: Make optional.
-	// TODO: Encode in UTF-8 first.
-	// TODO: Check for length overflowing 32 bits.
 	securityDomain := C.CString(pass.SecurityDomain)
 	defer C.free(unsafe.Pointer(securityDomain))
 
-	// TODO: Encode in UTF-8 first.
-	// TODO: Check for length overflowing 32 bits.
 	accountName := C.CString(pass.AccountName)
 	defer C.free(unsafe.Pointer(accountName))
 
-	// TODO: Encode in UTF-8 first.
-	// TODO: Check for length overflowing 32 bits.
 	path := C.CString(pass.Path)
 	defer C.free(unsafe.Pointer(path))
 
