@@ -5,7 +5,7 @@ import (
 )
 
 func TestInternetPassword(t *testing.T) {
-	passwordVal := "longfakepassword"
+	passwordVal := "longfakepassword with \000 embedded nuls \000"
 	accountNameVal := "bgentry"
 	serverNameVal := "api.heroku.com"
 	securityDomainVal := ""
@@ -28,7 +28,7 @@ func TestInternetPassword(t *testing.T) {
 	}
 	// Try adding again, expect it to fail as a duplicate
 	err = AddInternetPassword(&pass)
-	if err != ErrDuplicateItem {
+	if ke, ok := err.(*keychainError); !ok || ke.getErrCode() != errDuplicateItem {
 		t.Errorf("expected ErrDuplicateItem on 2nd save, got %s", err)
 	}
 	// Find the password
@@ -43,7 +43,7 @@ func TestInternetPassword(t *testing.T) {
 		t.Error(err)
 	}
 	if resp.Password != passwordVal {
-		t.Errorf("FindInternetPassword expected Password=%q, got %q", passwordVal, resp.Password)
+		t.Errorf("FindInternetPassword expected Password=%s, got %s", passwordVal, resp.Password)
 	}
 	if resp.AccountName != accountNameVal {
 		t.Errorf("FindInternetPassword expected AccountName=%q, got %q", accountNameVal, resp.AccountName)
