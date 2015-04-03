@@ -2,6 +2,8 @@ package osxkeychain
 
 // See https://developer.apple.com/library/mac/documentation/Security/Reference/keychainservices/index.html for the APIs used below.
 
+// Also see https://developer.apple.com/library/ios/documentation/Security/Conceptual/keychainServConcepts/01introduction/introduction.html .
+
 /*
 #cgo CFLAGS: -mmacosx-version-min=10.6 -D__MAC_OS_X_VERSION_MAX_ALLOWED=1060
 #cgo LDFLAGS: -framework CoreFoundation -framework Security
