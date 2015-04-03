@@ -7,7 +7,7 @@ import (
 func TestInternetPassword(t *testing.T) {
 	passwordVal := "longfakepassword"
 	accountNameVal := "bgentry"
-	serverNameVal := "api.heroku.com"
+	serverNameVal := "go-osxkeychain-test.example.com"
 	securityDomainVal := ""
 	// 	portVal := 886
 	pathVal := "/fake"
@@ -33,7 +33,7 @@ func TestInternetPassword(t *testing.T) {
 	}
 	// Find the password
 	pass2 := InternetPassword{
-		ServerName: "api.heroku.com",
+		ServerName: serverNameVal,
 		Path:       pathVal,
 		Protocol:   ProtocolHTTPS,
 		AuthType:   AuthenticationHTTPBasic,
