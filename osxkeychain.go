@@ -187,7 +187,7 @@ func AddInternetPassword(pass *InternetPassword) error {
 	defer C.free(unsafe.Pointer(serverName))
 
 	var securityDomain *C.char
-	if len(pass.SecurityDomain) > 0 {
+	if pass.SecurityDomain != "" {
 		securityDomain = C.CString(pass.SecurityDomain)
 		defer C.free(unsafe.Pointer(securityDomain))
 	}
@@ -239,7 +239,7 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 	defer C.free(unsafe.Pointer(serverName))
 
 	var securityDomain *C.char
-	if len(pass.SecurityDomain) > 0 {
+	if pass.SecurityDomain != "" {
 		securityDomain = C.CString(pass.SecurityDomain)
 		defer C.free(unsafe.Pointer(securityDomain))
 	}
