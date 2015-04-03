@@ -28,7 +28,7 @@ func TestInternetPassword(t *testing.T) {
 	}
 	// Try adding again, expect it to fail as a duplicate
 	err = AddInternetPassword(&pass)
-	if ke, ok := err.(*keychainError); !ok || ke.getErrCode() != errDuplicateItem {
+	if err != ErrDuplicateItem {
 		t.Errorf("expected ErrDuplicateItem on 2nd save, got %s", err)
 	}
 	// Find the password

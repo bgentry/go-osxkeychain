@@ -1,5 +1,7 @@
 package osxkeychain
 
+// See https://developer.apple.com/library/mac/documentation/Security/Reference/keychainservices/index.html for the APIs used below.
+
 /*
 #cgo CFLAGS: -mmacosx-version-min=10.6 -D__MAC_OS_X_VERSION_MAX_ALLOWED=1060
 #cgo LDFLAGS: -framework CoreFoundation -framework Security
@@ -94,30 +96,22 @@ func (pass *InternetPassword) CheckValidity() error {
 	return nil
 }
 
-type _OSStatus C.OSStatus
+type keychainError C.OSStatus
 
 // TODO: Fill this out.
 const (
-	errDuplicateItem _OSStatus = C.errSecDuplicateItem
+	ErrDuplicateItem keychainError = C.errSecDuplicateItem
 )
-
-type keychainError struct {
-	errCode C.OSStatus
-}
 
 func newKeychainError(errCode C.OSStatus) error {
 	if errCode == C.noErr {
 		return nil
 	}
-	return &keychainError{errCode}
+	return keychainError(errCode)
 }
 
-func (ke *keychainError) getErrCode() _OSStatus {
-	return _OSStatus(ke.errCode)
-}
-
-func (ke *keychainError) Error() string {
-	errorMessageCFString := C.SecCopyErrorMessageString(ke.errCode, nil)
+func (ke keychainError) Error() string {
+	errorMessageCFString := C.SecCopyErrorMessageString(C.OSStatus(ke), nil)
 	defer C.CFRelease(C.CFTypeRef(errorMessageCFString))
 
 	errorMessageCString := C.CFStringGetCStringPtr(errorMessageCFString, C.kCFStringEncodingASCII)
@@ -126,7 +120,7 @@ func (ke *keychainError) Error() string {
 		return C.GoString(errorMessageCString)
 	}
 
-	return fmt.Sprintf("keychainError with unknown error code %d", ke.errCode)
+	return fmt.Sprintf("keychainError with unknown error code %d", C.OSStatus(ke))
 }
 
 func protocolTypeToC(t ProtocolType) (pt C.SecProtocolType) {
