@@ -199,7 +199,6 @@ func AddInternetPassword(pass *InternetPassword) error {
 	defer C.free(unsafe.Pointer(path))
 
 	protocol := C.uint(protocolTypeToC(pass.Protocol))
-
 	authtype := C.uint(authenticationTypeToC(pass.AuthType))
 
 	password := unsafe.Pointer(C.CString(pass.Password))
@@ -252,13 +251,10 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 	defer C.free(unsafe.Pointer(path))
 
 	protocol := C.uint(protocolTypeToC(pass.Protocol))
-
 	authtype := C.uint(authenticationTypeToC(pass.AuthType))
 
 	var passwordLength C.UInt32
-
 	var password unsafe.Pointer
-
 	var itemRef C.SecKeychainItemRef
 
 	errCode := C.SecKeychainFindInternetPassword(
