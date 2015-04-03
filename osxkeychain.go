@@ -14,6 +14,8 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"math"
+	"unicode/utf8"
 	"unsafe"
 )
 
@@ -36,6 +38,9 @@ const (
 // A password for an Internet server, such as a Web or FTP server. Internet
 // password items on the keychain include attributes such as the security domain
 // and IP address.
+//
+// All string fields must have size that fits in 32 bits. All string
+// fields except for Password must be encoded in UTF-8.
 type InternetPassword struct {
 	ServerName     string
 	SecurityDomain string
@@ -63,6 +68,47 @@ var (
 	ErrDuplicateItem     = errors.New("The item already exists.")
 	ErrItemNotFound      = errors.New("The item cannot be found.")
 )
+
+func check32Bit(paramName, paramValue string) error {
+	if uint64(len(paramValue)) > math.MaxUint32 {
+		return errors.New(paramName + " has size overflowing 32 bits")
+	}
+	return nil
+}
+
+func check32BitUTF8(paramName, paramValue string) error {
+	if err := check32Bit(paramName, paramValue); err != nil {
+		return err
+	}
+	if !utf8.ValidString(paramValue) {
+		return errors.New(paramName + " is not a valid UTF-8 string")
+	}
+	return nil
+}
+
+func (pass *InternetPassword) CheckValidity() error {
+	if err := check32BitUTF8("ServerName", pass.ServerName); err != nil {
+		return err
+	}
+
+	if err := check32BitUTF8("SecurityDomain", pass.SecurityDomain); err != nil {
+		return err
+	}
+
+	if err := check32BitUTF8("AccountName", pass.AccountName); err != nil {
+		return err
+	}
+
+	if err := check32BitUTF8("Path", pass.Path); err != nil {
+		return err
+	}
+
+	if err := check32Bit("Password", pass.Password); err != nil {
+		return err
+	}
+
+	return nil
+}
 
 var resultCodes map[int]error = map[int]error{
 	-4:     ErrUnimplemented,
@@ -134,32 +180,24 @@ func authenticationTypeToGo(authtype C.CFTypeRef) AuthenticationType {
 
 // Adds an Internet password to the user's default keychain.
 func AddInternetPassword(pass *InternetPassword) error {
-	// TODO: Encode in UTF-8 first.
-	// TODO: Check for length overflowing 32 bits.
+	if err := pass.CheckValidity(); err != nil {
+		return err
+	}
+
 	serverName := C.CString(pass.ServerName)
 	defer C.free(unsafe.Pointer(serverName))
 
-	// TODO: Make optional.
-	// TODO: Encode in UTF-8 first.
-	// TODO: Check for length overflowing 32 bits.
 	securityDomain := C.CString(pass.SecurityDomain)
 	defer C.free(unsafe.Pointer(securityDomain))
 
-	// TODO: Encode in UTF-8 first.
-	// TODO: Check for length overflowing 32 bits.
 	accountName := C.CString(pass.AccountName)
 	defer C.free(unsafe.Pointer(accountName))
 
-	// TODO: Encode in UTF-8 first.
-	// TODO: Check for length overflowing 32 bits.
 	path := C.CString(pass.Path)
 	defer C.free(unsafe.Pointer(path))
-	
+
 	protocol := C.uint(protocolTypeToC(pass.Protocol))
-
 	authtype := C.uint(authenticationTypeToC(pass.AuthType))
-
-	// TODO: Check for length overflowing 32 bits.
 	password := C.CString(pass.Password)
 	defer C.free(unsafe.Pointer(password))
 
@@ -197,6 +235,10 @@ func AddInternetPassword(pass *InternetPassword) error {
 //
 // Returns an error if the lookup was unsuccessful.
 func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
+	if err := pass.CheckValidity(); err != nil {
+		return nil, err
+	}
+
 	resp := InternetPassword{}
 	protocol := protocolTypeToC(pass.Protocol)
 	authtype := C.SecAuthenticationType(C.kSecAuthenticationTypeHTTPBasic)
