@@ -330,15 +330,10 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 }
 
 func getCFDictValueString(dict C.CFDictionaryRef, key C.CFTypeRef) string {
-	if (int)(C.CFDictionaryGetCountOfKey(dict, unsafe.Pointer(key))) == 0 {
-		fmt.Println("dict doesn't contain key", key)
-	}
-	// maybe try CFDictionaryGetValueIfPresent to handle non-existent keys?
 	val := C.CFDictionaryGetValue(dict, unsafe.Pointer(key))
 	if val != nil {
-		valcstr := (*C.char)(C.CFStringGetCStringPtr((C.CFStringRef)(val), C.kCFStringEncodingUTF8))
-		defer C.CFRelease(C.CFTypeRef(valcstr))
-		return string(C.GoString(valcstr))
+		valcstr := C.CFStringGetCStringPtr((C.CFStringRef)(val), C.kCFStringEncodingUTF8)
+		return C.GoString(valcstr)
 	}
 	return ""
 }
