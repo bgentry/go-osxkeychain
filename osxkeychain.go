@@ -14,6 +14,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"math"
 	"unicode/utf8"
 	"unsafe"
 )
@@ -51,7 +52,18 @@ type InternetPassword struct {
 	AuthType       AuthenticationType
 }
 
-func checkUTF8(paramName, paramValue string) error {
+func check32Bit(paramName, paramValue string) error {
+	if uint64(len(paramValue)) > math.MaxUint32 {
+		return errors.New(paramName + " has size overflowing 32 bits")
+	}
+	return nil
+}
+
+func check32BitUTF8(paramName, paramValue string) error {
+	if err := check32Bit(paramName, paramValue); err != nil {
+		return err
+	}
+
 	if !utf8.ValidString(paramValue) {
 		return errors.New(paramName + " is not a valid UTF-8 string")
 	}
@@ -59,21 +71,23 @@ func checkUTF8(paramName, paramValue string) error {
 }
 
 func (pass *InternetPassword) CheckValidity() error {
-	// TODO: Check fields for size fitting in 32 bits.
-
-	if err := checkUTF8("ServerName", pass.ServerName); err != nil {
+	if err := check32BitUTF8("ServerName", pass.ServerName); err != nil {
 		return err
 	}
 
-	if err := checkUTF8("SecurityDomain", pass.SecurityDomain); err != nil {
+	if err := check32BitUTF8("SecurityDomain", pass.SecurityDomain); err != nil {
 		return err
 	}
 
-	if err := checkUTF8("AccountName", pass.AccountName); err != nil {
+	if err := check32BitUTF8("AccountName", pass.AccountName); err != nil {
 		return err
 	}
 
-	if err := checkUTF8("Path", pass.Path); err != nil {
+	if err := check32BitUTF8("Path", pass.Path); err != nil {
+		return err
+	}
+
+	if err := check32Bit("Password", pass.Password); err != nil {
 		return err
 	}
 
