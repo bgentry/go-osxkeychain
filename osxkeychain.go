@@ -12,7 +12,9 @@ package osxkeychain
 import "C"
 
 import (
+	"errors"
 	"fmt"
+	"unicode/utf8"
 	"unsafe"
 )
 
@@ -47,6 +49,35 @@ type InternetPassword struct {
 	Password       string
 	Protocol       ProtocolType
 	AuthType       AuthenticationType
+}
+
+func checkUTF8(paramName, paramValue string) error {
+	if !utf8.ValidString(paramValue) {
+		return errors.New(paramName + " is not a valid UTF-8 string")
+	}
+	return nil
+}
+
+func (pass *InternetPassword) CheckValidity() error {
+	// TODO: Check fields for size fitting in 32 bits.
+
+	if err := checkUTF8("ServerName", pass.ServerName); err != nil {
+		return err
+	}
+
+	if err := checkUTF8("SecurityDomain", pass.SecurityDomain); err != nil {
+		return err
+	}
+
+	if err := checkUTF8("AccountName", pass.AccountName); err != nil {
+		return err
+	}
+
+	if err := checkUTF8("Path", pass.Path); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 type _OSStatus C.OSStatus
@@ -138,8 +169,9 @@ func authenticationTypeToGo(authtype C.CFTypeRef) AuthenticationType {
 
 // Adds an Internet password to the user's default keychain.
 func AddInternetPassword(pass *InternetPassword) error {
-	// TODO: Check fields for UTF-8 encoding and size fitting in
-	// 32 bits.
+	if err := pass.CheckValidity(); err != nil {
+		return err
+	}
 
 	serverName := C.CString(pass.ServerName)
 	defer C.free(unsafe.Pointer(serverName))
@@ -188,8 +220,9 @@ func AddInternetPassword(pass *InternetPassword) error {
 //
 // Returns an error if the lookup was unsuccessful.
 func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
-	// TODO: Check fields for UTF-8 encoding and size fitting in
-	// 32 bits.
+	if err := pass.CheckValidity(); err != nil {
+		return nil, err
+	}
 
 	serverName := C.CString(pass.ServerName)
 	defer C.free(unsafe.Pointer(serverName))
