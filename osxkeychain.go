@@ -95,9 +95,30 @@ func (pass *InternetPassword) CheckValidity() error {
 
 type keychainError C.OSStatus
 
-// TODO: Fill this out.
+// Error codes from https://developer.apple.com/library/mac/documentation/security/Reference/keychainservices/Reference/reference.html#//apple_ref/doc/uid/TP30000898-CH5g-CJBEABHG
 const (
-	ErrDuplicateItem keychainError = C.errSecDuplicateItem
+	ErrUnimplemented     keychainError = C.errSecUnimplemented
+	ErrParam             keychainError = C.errSecParam
+	ErrAllocate          keychainError = C.errSecAllocate
+	ErrNotAvailable      keychainError = C.errSecNotAvailable
+	ErrReadOnly          keychainError = C.errSecReadOnly
+	ErrAuthFailed        keychainError = C.errSecAuthFailed
+	ErrNoSuchKeychain    keychainError = C.errSecNoSuchKeychain
+	ErrInvalidKeychain   keychainError = C.errSecInvalidKeychain
+	ErrDuplicateKeychain keychainError = C.errSecDuplicateKeychain
+	ErrDuplicateCallback keychainError = C.errSecDuplicateCallback
+	ErrInvalidCallback   keychainError = C.errSecInvalidCallback
+	ErrDuplicateItem     keychainError = C.errSecDuplicateItem
+	ErrItemNotFound      keychainError = C.errSecItemNotFound
+	ErrBufferTooSmall    keychainError = C.errSecBufferTooSmall
+	ErrDataTooLarge      keychainError = C.errSecDataTooLarge
+	ErrNoSuchAttr        keychainError = C.errSecNoSuchAttr
+	ErrInvalidItemRef    keychainError = C.errSecInvalidItemRef
+	ErrInvalidSearchRef  keychainError = C.errSecInvalidSearchRef
+	ErrNoSuchClass       keychainError = C.errSecNoSuchClass
+	ErrNoDefaultKeychain keychainError = C.errSecNoDefaultKeychain
+	ErrReadOnlyAttr      keychainError = C.errSecReadOnlyAttr
+	// TODO: Fill out more of these?
 )
 
 func newKeychainError(errCode C.OSStatus) error {
