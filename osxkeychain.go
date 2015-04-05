@@ -308,13 +308,14 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 		C.CFDictionaryGetValue(resultdict, unsafe.Pointer(C.kSecAttrAuthenticationType)),
 	))
 
-	// TODO: extract port number. The CFNumberRef in the dict doesn't appear to
-	// have a value.
-	// 	portref := (C.CFNumberRef)(C.CFDictionaryGetValue(dict, unsafe.Pointer(C.kSecAttrPort)))
-	// 	if portref != nil {
-	// 		var portval unsafe.Pointer
-	// 		portsuccess := C.CFNumberGetValue(portref, C.kCFNumberCharType, portval)
-	// 	}
+	portref := (C.CFNumberRef)(C.CFDictionaryGetValue(resultdict, unsafe.Pointer(C.kSecAttrPort)))
+	if portref != nil {
+		var port int32
+		portsuccess := C.CFNumberGetValue(portref, C.kCFNumberSInt32Type, unsafe.Pointer(&port))
+		if portsuccess == C.true {
+			resp.Port = int(port)
+		}
+	}
 
 	return &resp, nil
 }

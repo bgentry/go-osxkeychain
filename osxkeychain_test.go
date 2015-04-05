@@ -9,17 +9,17 @@ func TestInternetPassword(t *testing.T) {
 	accountNameVal := "bgentry"
 	serverNameVal := "go-osxkeychain-test.example.com"
 	securityDomainVal := ""
-	// 	portVal := 886
+	portVal := 886
 	pathVal := "/fake"
 	pass := InternetPassword{
 		ServerName:     serverNameVal,
 		SecurityDomain: securityDomainVal,
 		AccountName:    accountNameVal,
-		// 		Port:           portVal,
-		Path:     pathVal,
-		Protocol: ProtocolHTTPS,
-		AuthType: AuthenticationHTTPBasic,
-		Password: passwordVal,
+		Port:           portVal,
+		Path:           pathVal,
+		Protocol:       ProtocolHTTPS,
+		AuthType:       AuthenticationHTTPBasic,
+		Password:       passwordVal,
 	}
 	// Add the password
 	err := AddInternetPassword(&pass)
@@ -57,9 +57,9 @@ func TestInternetPassword(t *testing.T) {
 	if resp.Protocol != ProtocolHTTPS {
 		t.Errorf("FindInternetPassword expected Protocol=https, got %q", resp.Protocol)
 	}
-	// 	if resp.Port != portVal {
-	// 		t.Errorf("FindInternetPassword expected Port=%d, got %d", portVal, resp.Port)
-	// 	}
+	if resp.Port != portVal {
+		t.Errorf("FindInternetPassword expected Port=%d, got %d", portVal, resp.Port)
+	}
 	if resp.AuthType != AuthenticationHTTPBasic {
 		t.Errorf("FindInternetPassword expected AuthType=HTTPBasic, got %q", resp.AuthType)
 	}
