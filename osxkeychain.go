@@ -296,35 +296,38 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 
 	// get attributes out of attribute dictionary
 	resultdict := (C.CFDictionaryRef)(result) // type cast attribute dictionary
-	resp.AccountName = getCFDictValueString(resultdict, C.kSecAttrAccount)
-	resp.ServerName = getCFDictValueString(resultdict, C.kSecAttrServer)
-	resp.SecurityDomain = getCFDictValueString(resultdict, C.kSecAttrSecurityDomain)
-	resp.Path = getCFDictValueString(resultdict, C.kSecAttrPath)
-
-	resp.Protocol = protocolTypeToGo((C.CFTypeRef)(
-		C.CFDictionaryGetValue(resultdict, unsafe.Pointer(C.kSecAttrProtocol)),
-	))
-	resp.AuthType = authenticationTypeToGo((C.CFTypeRef)(
-		C.CFDictionaryGetValue(resultdict, unsafe.Pointer(C.kSecAttrAuthenticationType)),
-	))
-
-	portref := (C.CFNumberRef)(C.CFDictionaryGetValue(resultdict, unsafe.Pointer(C.kSecAttrPort)))
-	if portref != nil {
-		var port int32
-		portsuccess := C.CFNumberGetValue(portref, C.kCFNumberSInt32Type, unsafe.Pointer(&port))
-		if portsuccess == C.true {
-			resp.Port = int(port)
-		}
-	}
+	resp.ServerName = getCFDictValueUTF8String(resultdict, C.kSecAttrServer)
+	resp.SecurityDomain = getCFDictValueUTF8String(resultdict, C.kSecAttrSecurityDomain)
+	resp.AccountName = getCFDictValueUTF8String(resultdict, C.kSecAttrAccount)
+	resp.Path = getCFDictValueUTF8String(resultdict, C.kSecAttrPath)
+	resp.Port = (int)(getCFDictValueInt32(resultdict, C.kSecAttrPort))
+	resp.Protocol = protocolTypeToGo(getCFDictValueRef(resultdict, C.kSecAttrProtocol))
+	resp.AuthType = authenticationTypeToGo(getCFDictValueRef(resultdict, C.kSecAttrAuthenticationType))
 
 	return &resp, nil
 }
 
-func getCFDictValueString(dict C.CFDictionaryRef, key C.CFTypeRef) string {
-	val := C.CFDictionaryGetValue(dict, unsafe.Pointer(key))
-	if val != nil {
-		valcstr := C.CFStringGetCStringPtr((C.CFStringRef)(val), C.kCFStringEncodingUTF8)
-		return C.GoString(valcstr)
+func getCFDictValueRef(dict C.CFDictionaryRef, key C.CFTypeRef) C.CFTypeRef {
+	return (C.CFTypeRef)(C.CFDictionaryGetValue(dict, unsafe.Pointer(key)))
+}
+
+func getCFDictValueUTF8String(dict C.CFDictionaryRef, key C.CFTypeRef) string {
+	val := getCFDictValueRef(dict, key)
+	if val == nil {
+		return ""
 	}
-	return ""
+	valcstr := C.CFStringGetCStringPtr((C.CFStringRef)(val), C.kCFStringEncodingUTF8)
+	return C.GoString(valcstr)
+}
+
+func getCFDictValueInt32(dict C.CFDictionaryRef, key C.CFTypeRef) (ret int32) {
+	val := getCFDictValueRef(dict, key)
+	if val == nil {
+		return
+	}
+	if C.CFNumberGetValue((C.CFNumberRef)(val), C.kCFNumberSInt32Type, unsafe.Pointer(&ret)) == C.false {
+		ret = 0
+		return
+	}
+	return
 }
