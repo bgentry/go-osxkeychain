@@ -22,20 +22,20 @@ import (
 	"unsafe"
 )
 
-type ProtocolType int
+type ProtocolType C.SecProtocolType
 
 const (
-	ProtocolHTTP ProtocolType = iota
-	ProtocolHTTPS
-	ProtocolAny
+	ProtocolHTTP  ProtocolType = C.kSecProtocolTypeHTTP
+	ProtocolHTTPS              = C.kSecProtocolTypeHTTPS
+	ProtocolAny                = C.kSecProtocolTypeAny
 )
 
-type AuthenticationType int
+type AuthenticationType C.SecAuthenticationType
 
 const (
-	AuthenticationHTTPBasic AuthenticationType = iota
-	AuthenticationDefault
-	AuthenticationAny
+	AuthenticationHTTPBasic AuthenticationType = C.kSecAuthenticationTypeHTTPBasic
+	AuthenticationDefault                      = C.kSecAuthenticationTypeDefault
+	AuthenticationAny                          = C.kSecAuthenticationTypeAny
 )
 
 // A password for an Internet server, such as a Web or FTP server. Internet
@@ -118,18 +118,6 @@ func (ke keychainError) Error() string {
 	return fmt.Sprintf("keychainError with unknown error code %d", C.OSStatus(ke))
 }
 
-func protocolTypeToC(t ProtocolType) (pt C.SecProtocolType) {
-	switch t {
-	case ProtocolHTTP:
-		pt = C.kSecProtocolTypeHTTP
-	case ProtocolHTTPS:
-		pt = C.kSecProtocolTypeHTTPS
-	default:
-		pt = C.kSecProtocolTypeAny
-	}
-	return
-}
-
 func protocolTypeToGo(proto C.CFTypeRef) ProtocolType {
 	if proto == nil {
 		// handle nil?
@@ -143,18 +131,6 @@ func protocolTypeToGo(proto C.CFTypeRef) ProtocolType {
 		return ProtocolHTTPS
 	}
 	panic(fmt.Sprintf("unknown proto in protocolTypeToGo: %v", proto))
-}
-
-func authenticationTypeToC(t AuthenticationType) (at int) {
-	switch t {
-	case AuthenticationHTTPBasic:
-		at = C.kSecAuthenticationTypeHTTPBasic
-	case AuthenticationAny:
-		at = C.kSecAuthenticationTypeAny
-	default:
-		at = C.kSecAuthenticationTypeDefault
-	}
-	return
 }
 
 func authenticationTypeToGo(authtype C.CFTypeRef) AuthenticationType {
@@ -191,8 +167,6 @@ func AddInternetPassword(pass *InternetPassword) error {
 	path := C.CString(pass.Path)
 	defer C.free(unsafe.Pointer(path))
 
-	protocol := C.uint(protocolTypeToC(pass.Protocol))
-	authtype := C.uint(authenticationTypeToC(pass.AuthType))
 	password := unsafe.Pointer(C.CString(pass.Password))
 	defer C.free(password)
 
@@ -207,8 +181,8 @@ func AddInternetPassword(pass *InternetPassword) error {
 		C.UInt32(len(pass.Path)),
 		path,
 		C.UInt16(pass.Port),
-		C.SecProtocolType(protocol),
-		C.SecAuthenticationType(authtype),
+		C.SecProtocolType(pass.Protocol),
+		C.SecAuthenticationType(pass.AuthType),
 		C.UInt32(len(pass.Password)),
 		password,
 		nil,
@@ -242,8 +216,6 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 	path := C.CString(pass.Path)
 	defer C.free(unsafe.Pointer(path))
 
-	protocol := C.uint(protocolTypeToC(pass.Protocol))
-	authtype := C.uint(authenticationTypeToC(pass.AuthType))
 	var passwordLength C.UInt32
 	var password unsafe.Pointer
 	var itemRef C.SecKeychainItemRef
@@ -259,8 +231,8 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 		C.UInt32(len(pass.Path)),
 		path,
 		C.UInt16(pass.Port),
-		C.SecProtocolType(protocol),
-		C.SecAuthenticationType(authtype),
+		C.SecProtocolType(pass.Protocol),
+		C.SecAuthenticationType(pass.AuthType),
 		&passwordLength,
 		&password,
 		&itemRef,
