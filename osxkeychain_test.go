@@ -5,7 +5,7 @@ import (
 )
 
 func TestInternetPassword(t *testing.T) {
-	passwordVal := "longfakepassword with emoji 🍻 and \000 embedded nuls \000"
+	passwordVal := "longfakepassword with invalid UTF-8 \xc3\x28 and \000 embedded nuls \000"
 	accountNameVal := "bgentry"
 	serverNameVal := "go-osxkeychain-test.example.com"
 	securityDomainVal := ""
