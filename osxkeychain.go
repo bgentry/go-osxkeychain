@@ -11,7 +11,6 @@ package osxkeychain
 #include <stdlib.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
-#include "osxkeychain.h"
 */
 import "C"
 
