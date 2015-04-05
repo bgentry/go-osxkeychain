@@ -24,6 +24,7 @@ import (
 
 type ProtocolType C.SecProtocolType
 
+// TODO: Fill this out.
 const (
 	ProtocolHTTP  ProtocolType = C.kSecProtocolTypeHTTP
 	ProtocolHTTPS              = C.kSecProtocolTypeHTTPS
@@ -32,6 +33,7 @@ const (
 
 type AuthenticationType C.SecAuthenticationType
 
+// TODO: Fill this out.
 const (
 	AuthenticationHTTPBasic AuthenticationType = C.kSecAuthenticationTypeHTTPBasic
 	AuthenticationDefault                      = C.kSecAuthenticationTypeDefault
@@ -118,12 +120,8 @@ func (ke keychainError) Error() string {
 	return fmt.Sprintf("keychainError with unknown error code %d", C.OSStatus(ke))
 }
 
-func protocolTypeToGo(proto C.CFTypeRef) ProtocolType {
-	if proto == nil {
-		// handle nil?
-		fmt.Println("nil proto in protocolTypeToGo")
-		return ProtocolAny
-	}
+func protocolTypeFromRef(proto C.CFTypeRef) ProtocolType {
+	// TODO: Fill this out.
 	switch proto {
 	case C.kSecAttrProtocolHTTP:
 		return ProtocolHTTP
@@ -133,17 +131,15 @@ func protocolTypeToGo(proto C.CFTypeRef) ProtocolType {
 	panic(fmt.Sprintf("unknown proto in protocolTypeToGo: %v", proto))
 }
 
-func authenticationTypeToGo(authtype C.CFTypeRef) AuthenticationType {
-	if authtype == nil {
-		// handle nil?
-		fmt.Println("nil authtype in authenticationTypeToGo")
-		return AuthenticationAny
-	}
-	switch authtype {
+func authenticationTypeFromRef(authType C.CFTypeRef) AuthenticationType {
+	// TODO: Fill this out.
+	switch authType {
 	case C.kSecAttrAuthenticationTypeHTTPBasic:
 		return AuthenticationHTTPBasic
+	case C.kSecAttrAuthenticationTypeDefault:
+		return AuthenticationDefault
 	}
-	panic(fmt.Sprintf("unknown authtype in authenticationTypeToGo: %v", authtype))
+	panic(fmt.Sprintf("unknown authType in authenticationTypeFromStringRef: %v", authType))
 }
 
 // Adds an Internet password to the user's default keychain.
@@ -272,8 +268,8 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 	resp.AccountName = getCFDictValueUTF8String(resultdict, C.kSecAttrAccount)
 	resp.Path = getCFDictValueUTF8String(resultdict, C.kSecAttrPath)
 	resp.Port = (int)(getCFDictValueInt32(resultdict, C.kSecAttrPort))
-	resp.Protocol = protocolTypeToGo(getCFDictValueRef(resultdict, C.kSecAttrProtocol))
-	resp.AuthType = authenticationTypeToGo(getCFDictValueRef(resultdict, C.kSecAttrAuthenticationType))
+	resp.Protocol = protocolTypeFromRef(getCFDictValueRef(resultdict, C.kSecAttrProtocol))
+	resp.AuthType = authenticationTypeFromRef(getCFDictValueRef(resultdict, C.kSecAttrAuthenticationType))
 
 	return &resp, nil
 }
