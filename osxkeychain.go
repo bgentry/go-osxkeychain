@@ -11,7 +11,6 @@ package osxkeychain
 #include <stdlib.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
-#include "osxkeychain.h"
 */
 import "C"
 
@@ -23,20 +22,22 @@ import (
 	"unsafe"
 )
 
-type ProtocolType int
+type ProtocolType C.SecProtocolType
 
+// TODO: Fill this out.
 const (
-	ProtocolHTTP ProtocolType = iota
-	ProtocolHTTPS
-	ProtocolAny
+	ProtocolHTTP  ProtocolType = C.kSecProtocolTypeHTTP
+	ProtocolHTTPS              = C.kSecProtocolTypeHTTPS
+	ProtocolAny                = C.kSecProtocolTypeAny
 )
 
-type AuthenticationType int
+type AuthenticationType C.SecAuthenticationType
 
+// TODO: Fill this out.
 const (
-	AuthenticationHTTPBasic AuthenticationType = iota
-	AuthenticationDefault
-	AuthenticationAny
+	AuthenticationHTTPBasic AuthenticationType = C.kSecAuthenticationTypeHTTPBasic
+	AuthenticationDefault                      = C.kSecAuthenticationTypeDefault
+	AuthenticationAny                          = C.kSecAuthenticationTypeAny
 )
 
 // A password for an Internet server, such as a Web or FTP server. Internet
@@ -119,24 +120,8 @@ func (ke keychainError) Error() string {
 	return fmt.Sprintf("keychainError with unknown error code %d", C.OSStatus(ke))
 }
 
-func protocolTypeToC(t ProtocolType) (pt C.SecProtocolType) {
-	switch t {
-	case ProtocolHTTP:
-		pt = C.kSecProtocolTypeHTTP
-	case ProtocolHTTPS:
-		pt = C.kSecProtocolTypeHTTPS
-	default:
-		pt = C.kSecProtocolTypeAny
-	}
-	return
-}
-
-func protocolTypeToGo(proto C.CFTypeRef) ProtocolType {
-	if proto == nil {
-		// handle nil?
-		fmt.Println("nil proto in protocolTypeToGo")
-		return ProtocolAny
-	}
+func protocolTypeFromRef(proto C.CFTypeRef) ProtocolType {
+	// TODO: Fill this out.
 	switch proto {
 	case C.kSecAttrProtocolHTTP:
 		return ProtocolHTTP
@@ -146,29 +131,15 @@ func protocolTypeToGo(proto C.CFTypeRef) ProtocolType {
 	panic(fmt.Sprintf("unknown proto in protocolTypeToGo: %v", proto))
 }
 
-func authenticationTypeToC(t AuthenticationType) (at int) {
-	switch t {
-	case AuthenticationHTTPBasic:
-		at = C.kSecAuthenticationTypeHTTPBasic
-	case AuthenticationAny:
-		at = C.kSecAuthenticationTypeAny
-	default:
-		at = C.kSecAuthenticationTypeDefault
-	}
-	return
-}
-
-func authenticationTypeToGo(authtype C.CFTypeRef) AuthenticationType {
-	if authtype == nil {
-		// handle nil?
-		fmt.Println("nil authtype in authenticationTypeToGo")
-		return AuthenticationAny
-	}
-	switch authtype {
+func authenticationTypeFromRef(authType C.CFTypeRef) AuthenticationType {
+	// TODO: Fill this out.
+	switch authType {
 	case C.kSecAttrAuthenticationTypeHTTPBasic:
 		return AuthenticationHTTPBasic
+	case C.kSecAttrAuthenticationTypeDefault:
+		return AuthenticationDefault
 	}
-	panic(fmt.Sprintf("unknown authtype in authenticationTypeToGo: %v", authtype))
+	panic(fmt.Sprintf("unknown authType in authenticationTypeFromStringRef: %v", authType))
 }
 
 // Adds an Internet password to the user's default keychain.
@@ -192,8 +163,6 @@ func AddInternetPassword(pass *InternetPassword) error {
 	path := C.CString(pass.Path)
 	defer C.free(unsafe.Pointer(path))
 
-	protocol := C.uint(protocolTypeToC(pass.Protocol))
-	authtype := C.uint(authenticationTypeToC(pass.AuthType))
 	password := unsafe.Pointer(C.CString(pass.Password))
 	defer C.free(password)
 
@@ -208,8 +177,8 @@ func AddInternetPassword(pass *InternetPassword) error {
 		C.UInt32(len(pass.Path)),
 		path,
 		C.UInt16(pass.Port),
-		C.SecProtocolType(protocol),
-		C.SecAuthenticationType(authtype),
+		C.SecProtocolType(pass.Protocol),
+		C.SecAuthenticationType(pass.AuthType),
 		C.UInt32(len(pass.Password)),
 		password,
 		nil,
@@ -243,8 +212,6 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 	path := C.CString(pass.Path)
 	defer C.free(unsafe.Pointer(path))
 
-	protocol := C.uint(protocolTypeToC(pass.Protocol))
-	authtype := C.uint(authenticationTypeToC(pass.AuthType))
 	var passwordLength C.UInt32
 	var password unsafe.Pointer
 	var itemRef C.SecKeychainItemRef
@@ -260,8 +227,8 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 		C.UInt32(len(pass.Path)),
 		path,
 		C.UInt16(pass.Port),
-		C.SecProtocolType(protocol),
-		C.SecAuthenticationType(authtype),
+		C.SecProtocolType(pass.Protocol),
+		C.SecAuthenticationType(pass.AuthType),
 		&passwordLength,
 		&password,
 		&itemRef,
@@ -296,34 +263,38 @@ func FindInternetPassword(pass *InternetPassword) (*InternetPassword, error) {
 
 	// get attributes out of attribute dictionary
 	resultdict := (C.CFDictionaryRef)(result) // type cast attribute dictionary
-	resp.AccountName = getCFDictValueString(resultdict, C.kSecAttrAccount)
-	resp.ServerName = getCFDictValueString(resultdict, C.kSecAttrServer)
-	resp.SecurityDomain = getCFDictValueString(resultdict, C.kSecAttrSecurityDomain)
-	resp.Path = getCFDictValueString(resultdict, C.kSecAttrPath)
-
-	resp.Protocol = protocolTypeToGo((C.CFTypeRef)(
-		C.CFDictionaryGetValue(resultdict, unsafe.Pointer(C.kSecAttrProtocol)),
-	))
-	resp.AuthType = authenticationTypeToGo((C.CFTypeRef)(
-		C.CFDictionaryGetValue(resultdict, unsafe.Pointer(C.kSecAttrAuthenticationType)),
-	))
-
-	// TODO: extract port number. The CFNumberRef in the dict doesn't appear to
-	// have a value.
-	// 	portref := (C.CFNumberRef)(C.CFDictionaryGetValue(dict, unsafe.Pointer(C.kSecAttrPort)))
-	// 	if portref != nil {
-	// 		var portval unsafe.Pointer
-	// 		portsuccess := C.CFNumberGetValue(portref, C.kCFNumberCharType, portval)
-	// 	}
+	resp.ServerName = getCFDictValueUTF8String(resultdict, C.kSecAttrServer)
+	resp.SecurityDomain = getCFDictValueUTF8String(resultdict, C.kSecAttrSecurityDomain)
+	resp.AccountName = getCFDictValueUTF8String(resultdict, C.kSecAttrAccount)
+	resp.Path = getCFDictValueUTF8String(resultdict, C.kSecAttrPath)
+	resp.Port = (int)(getCFDictValueInt32(resultdict, C.kSecAttrPort))
+	resp.Protocol = protocolTypeFromRef(getCFDictValueRef(resultdict, C.kSecAttrProtocol))
+	resp.AuthType = authenticationTypeFromRef(getCFDictValueRef(resultdict, C.kSecAttrAuthenticationType))
 
 	return &resp, nil
 }
 
-func getCFDictValueString(dict C.CFDictionaryRef, key C.CFTypeRef) string {
-	val := C.CFDictionaryGetValue(dict, unsafe.Pointer(key))
-	if val != nil {
-		valcstr := C.CFStringGetCStringPtr((C.CFStringRef)(val), C.kCFStringEncodingUTF8)
-		return C.GoString(valcstr)
+func getCFDictValueRef(dict C.CFDictionaryRef, key C.CFTypeRef) C.CFTypeRef {
+	return (C.CFTypeRef)(C.CFDictionaryGetValue(dict, unsafe.Pointer(key)))
+}
+
+func getCFDictValueUTF8String(dict C.CFDictionaryRef, key C.CFTypeRef) string {
+	val := getCFDictValueRef(dict, key)
+	if val == nil {
+		return ""
 	}
-	return ""
+	valcstr := C.CFStringGetCStringPtr((C.CFStringRef)(val), C.kCFStringEncodingUTF8)
+	return C.GoString(valcstr)
+}
+
+func getCFDictValueInt32(dict C.CFDictionaryRef, key C.CFTypeRef) (ret int32) {
+	val := getCFDictValueRef(dict, key)
+	if val == nil {
+		return
+	}
+	if C.CFNumberGetValue((C.CFNumberRef)(val), C.kCFNumberSInt32Type, unsafe.Pointer(&ret)) == C.false {
+		ret = 0
+		return
+	}
+	return
 }
