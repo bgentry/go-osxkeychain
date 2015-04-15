@@ -6,8 +6,8 @@ import (
 
 func TestGenericPassword(t *testing.T) {
 	attributes := GenericPasswordAttributes{
-		ServiceName: "osxkeychain_test",
-		AccountName: "test account",
+		ServiceName: "osxkeychain_test with unicode テスト",
+		AccountName: "test account with unicode テスト",
 	}
 
 	// Add with a blank password.
@@ -18,7 +18,7 @@ func TestGenericPassword(t *testing.T) {
 
 	// Try adding again.
 	err = AddGenericPassword(&attributes)
-	if ke, ok := err.(*keychainError); !ok || ke.getErrCode() != errDuplicateItem {
+	if err != ErrDuplicateItem {
 		t.Errorf("expected ErrDuplicateItem, got %s", err)
 	}
 
@@ -43,7 +43,7 @@ func TestGenericPassword(t *testing.T) {
 	}
 
 	// Replace password with a non-empty password.
-	expectedPassword := "long test password \000 with embedded nuls \000"
+	expectedPassword := "long test password \000 with invalid UTF-8 \xc3\x28 and embedded nuls \000"
 	attributes.Password = expectedPassword
 	err = ReplaceOrAddGenericPassword(&attributes)
 	if err != nil {
@@ -68,7 +68,64 @@ func TestGenericPassword(t *testing.T) {
 
 	// Try removing again.
 	err = FindAndRemoveGenericPassword(&attributes)
-	if ke, ok := err.(*keychainError); !ok || ke.getErrCode() != errItemNotFound {
+	if err != ErrItemNotFound {
 		t.Errorf("expected ErrItemNotFound, got %s", err)
+	}
+}
+
+// Make sure fields with invalid UTF-8 are detected properly.
+func TestInvalidUTF8(t *testing.T) {
+	attributes1 := GenericPasswordAttributes{
+		ServiceName: "osxkeychain_test with invalid UTF-8 \xc3\x28",
+		AccountName: "test account",
+	}
+
+	errServiceName := "ServiceName is not a valid UTF-8 string"
+
+	err := AddGenericPassword(&attributes1)
+	if err.Error() != errServiceName {
+		t.Errorf("Expected \"%s\", got %v", errServiceName, err)
+	}
+
+	_, err = FindGenericPassword(&attributes1)
+	if err.Error() != errServiceName {
+		t.Errorf("Expected \"%s\", got %v", errServiceName, err)
+	}
+
+	err = ReplaceOrAddGenericPassword(&attributes1)
+	if err.Error() != errServiceName {
+		t.Errorf("Expected \"%s\", got %v", errServiceName, err)
+	}
+
+	err = FindAndRemoveGenericPassword(&attributes1)
+	if err.Error() != errServiceName {
+		t.Errorf("Expected \"%s\", got %v", errServiceName, err)
+	}
+
+	attributes2 := GenericPasswordAttributes{
+		ServiceName: "osxkeychain_test",
+		AccountName: "test account with invalid UTF-8 \xc3\x28",
+	}
+
+	errAccountName := "AccountName is not a valid UTF-8 string"
+
+	err = AddGenericPassword(&attributes2)
+	if err.Error() != errAccountName {
+		t.Errorf("Expected \"%s\", got %v", errAccountName, err)
+	}
+
+	_, err = FindGenericPassword(&attributes2)
+	if err.Error() != errAccountName {
+		t.Errorf("Expected \"%s\", got %v", errAccountName, err)
+	}
+
+	err = ReplaceOrAddGenericPassword(&attributes2)
+	if err.Error() != errAccountName {
+		t.Errorf("Expected \"%s\", got %v", errAccountName, err)
+	}
+
+	err = FindAndRemoveGenericPassword(&attributes2)
+	if err.Error() != errAccountName {
+		t.Errorf("Expected \"%s\", got %v", errAccountName, err)
 	}
 }

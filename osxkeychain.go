@@ -1,5 +1,9 @@
 package osxkeychain
 
+// See https://developer.apple.com/library/mac/documentation/Security/Reference/keychainservices/index.html for the APIs used below.
+
+// Also see https://developer.apple.com/library/ios/documentation/Security/Conceptual/keychainServConcepts/01introduction/introduction.html .
+
 /*
 #cgo CFLAGS: -mmacosx-version-min=10.6 -D__MAC_OS_X_VERSION_MAX_ALLOWED=1060
 #cgo LDFLAGS: -framework CoreFoundation -framework Security
@@ -11,7 +15,10 @@ package osxkeychain
 import "C"
 
 import (
+	"errors"
 	"fmt"
+	"math"
+	"unicode/utf8"
 	"unsafe"
 )
 
@@ -23,31 +30,73 @@ type GenericPasswordAttributes struct {
 	Password    string
 }
 
-type _OSStatus C.OSStatus
-
-// TODO: Fill this out.
-const (
-	errDuplicateItem _OSStatus = C.errSecDuplicateItem
-	errItemNotFound            = C.errSecItemNotFound
-)
-
-type keychainError struct {
-	errCode C.OSStatus
+func check32Bit(paramName, paramValue string) error {
+	if uint64(len(paramValue)) > math.MaxUint32 {
+		return errors.New(paramName + " has size overflowing 32 bits")
+	}
+	return nil
 }
+
+func check32BitUTF8(paramName, paramValue string) error {
+	if err := check32Bit(paramName, paramValue); err != nil {
+		return err
+	}
+	if !utf8.ValidString(paramValue) {
+		return errors.New(paramName + " is not a valid UTF-8 string")
+	}
+	return nil
+}
+
+func (attributes *GenericPasswordAttributes) CheckValidity() error {
+	if err := check32BitUTF8("ServiceName", attributes.ServiceName); err != nil {
+		return err
+	}
+	if err := check32BitUTF8("AccountName", attributes.AccountName); err != nil {
+		return err
+	}
+	if err := check32Bit("Password", attributes.Password); err != nil {
+		return err
+	}
+	return nil
+}
+
+type keychainError C.OSStatus
+
+// Error codes from https://developer.apple.com/library/mac/documentation/security/Reference/keychainservices/Reference/reference.html#//apple_ref/doc/uid/TP30000898-CH5g-CJBEABHG
+const (
+	ErrUnimplemented     keychainError = C.errSecUnimplemented
+	ErrParam             keychainError = C.errSecParam
+	ErrAllocate          keychainError = C.errSecAllocate
+	ErrNotAvailable      keychainError = C.errSecNotAvailable
+	ErrReadOnly          keychainError = C.errSecReadOnly
+	ErrAuthFailed        keychainError = C.errSecAuthFailed
+	ErrNoSuchKeychain    keychainError = C.errSecNoSuchKeychain
+	ErrInvalidKeychain   keychainError = C.errSecInvalidKeychain
+	ErrDuplicateKeychain keychainError = C.errSecDuplicateKeychain
+	ErrDuplicateCallback keychainError = C.errSecDuplicateCallback
+	ErrInvalidCallback   keychainError = C.errSecInvalidCallback
+	ErrDuplicateItem     keychainError = C.errSecDuplicateItem
+	ErrItemNotFound      keychainError = C.errSecItemNotFound
+	ErrBufferTooSmall    keychainError = C.errSecBufferTooSmall
+	ErrDataTooLarge      keychainError = C.errSecDataTooLarge
+	ErrNoSuchAttr        keychainError = C.errSecNoSuchAttr
+	ErrInvalidItemRef    keychainError = C.errSecInvalidItemRef
+	ErrInvalidSearchRef  keychainError = C.errSecInvalidSearchRef
+	ErrNoSuchClass       keychainError = C.errSecNoSuchClass
+	ErrNoDefaultKeychain keychainError = C.errSecNoDefaultKeychain
+	ErrReadOnlyAttr      keychainError = C.errSecReadOnlyAttr
+	// TODO: Fill out more of these?
+)
 
 func newKeychainError(errCode C.OSStatus) error {
 	if errCode == C.noErr {
 		return nil
 	}
-	return &keychainError{errCode}
+	return keychainError(errCode)
 }
 
-func (ke *keychainError) getErrCode() _OSStatus {
-	return _OSStatus(ke.errCode)
-}
-
-func (ke *keychainError) Error() string {
-	errorMessageCFString := C.SecCopyErrorMessageString(ke.errCode, nil)
+func (ke keychainError) Error() string {
+	errorMessageCFString := C.SecCopyErrorMessageString(C.OSStatus(ke), nil)
 	defer C.CFRelease(C.CFTypeRef(errorMessageCFString))
 
 	errorMessageCString := C.CFStringGetCStringPtr(errorMessageCFString, C.kCFStringEncodingASCII)
@@ -56,12 +105,14 @@ func (ke *keychainError) Error() string {
 		return C.GoString(errorMessageCString)
 	}
 
-	return fmt.Sprintf("keychainError with unknown error code %d", ke.errCode)
+	return fmt.Sprintf("keychainError with unknown error code %d", C.OSStatus(ke))
 }
 
 func AddGenericPassword(attributes *GenericPasswordAttributes) error {
-	// TODO: Check fields for UTF-8 encoding and size fitting in
-	// 32 bits.
+	if err := attributes.CheckValidity(); err != nil {
+		return err
+	}
+
 	serviceName := C.CString(attributes.ServiceName)
 	defer C.free(unsafe.Pointer(serviceName))
 
@@ -86,8 +137,10 @@ func AddGenericPassword(attributes *GenericPasswordAttributes) error {
 }
 
 func FindGenericPassword(attributes *GenericPasswordAttributes) (string, error) {
-	// TODO: Check fields for UTF-8 encoding and size fitting in
-	// 32 bits.
+	if err := attributes.CheckValidity(); err != nil {
+		return "", err
+	}
+
 	serviceName := C.CString(attributes.ServiceName)
 	defer C.free(unsafe.Pointer(serviceName))
 
@@ -132,17 +185,14 @@ func FindAndRemoveGenericPassword(attributes *GenericPasswordAttributes) error {
 
 func ReplaceOrAddGenericPassword(attributes *GenericPasswordAttributes) error {
 	itemRef, err := findGenericPasswordItem(attributes)
-	if err != nil {
-		if ke, ok := err.(*keychainError); !ok || ke.getErrCode() != errItemNotFound {
-			return err
-		}
-
+	if err == ErrItemNotFound {
 		return AddGenericPassword(attributes)
+	} else if err != nil {
+		return err
 	}
 
 	defer C.CFRelease(C.CFTypeRef(itemRef))
 
-	// TODO: Check for size fitting in 32 bits.
 	password := unsafe.Pointer(C.CString(attributes.Password))
 	defer C.free(password)
 
@@ -157,8 +207,10 @@ func ReplaceOrAddGenericPassword(attributes *GenericPasswordAttributes) error {
 }
 
 func findGenericPasswordItem(attributes *GenericPasswordAttributes) (itemRef C.SecKeychainItemRef, err error) {
-	// TODO: Check field for UTF-8 encoding and size fitting in 32
-	// bits.
+	if err = attributes.CheckValidity(); err != nil {
+		return
+	}
+
 	serviceName := C.CString(attributes.ServiceName)
 	defer C.free(unsafe.Pointer(serviceName))
 
