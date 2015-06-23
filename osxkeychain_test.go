@@ -34,11 +34,14 @@ func TestGenericPassword(t *testing.T) {
 	}
 
 	// Replace password with itself (a nil password).
-	err = ReplaceOrAddGenericPassword(&attributes)
+	err = RemoveAndAddGenericPassword(&attributes)
+	if err != nil {
+		t.Error(err)
+	}
 
 	// Replace password with an empty password.
 	attributes.Password = ""
-	err = ReplaceOrAddGenericPassword(&attributes)
+	err = RemoveAndAddGenericPassword(&attributes)
 	if err != nil {
 		t.Error(err)
 	}
@@ -46,7 +49,7 @@ func TestGenericPassword(t *testing.T) {
 	// Replace password with a non-empty password.
 	expectedPassword := "long test password \000 with invalid UTF-8 \xc3\x28 and embedded nuls \000"
 	attributes.Password = expectedPassword
-	err = ReplaceOrAddGenericPassword(&attributes)
+	err = RemoveAndAddGenericPassword(&attributes)
 	if err != nil {
 		t.Error(err)
 	}
@@ -72,6 +75,18 @@ func TestGenericPassword(t *testing.T) {
 	if err != ErrItemNotFound {
 		t.Errorf("expected ErrItemNotFound, got %s", err)
 	}
+
+	// Try add path of RemoveAndAddGenericPassword.
+	err = RemoveAndAddGenericPassword(&attributes)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Remove.
+	err = FindAndRemoveGenericPassword(&attributes)
+	if err != nil {
+		t.Error(err)
+	}
 }
 
 // Make sure fields with invalid UTF-8 are detected properly.
@@ -93,7 +108,7 @@ func TestInvalidUTF8(t *testing.T) {
 		t.Errorf("Expected \"%s\", got %v", errServiceName, err)
 	}
 
-	err = ReplaceOrAddGenericPassword(&attributes1)
+	err = RemoveAndAddGenericPassword(&attributes1)
 	if err.Error() != errServiceName {
 		t.Errorf("Expected \"%s\", got %v", errServiceName, err)
 	}
@@ -120,7 +135,7 @@ func TestInvalidUTF8(t *testing.T) {
 		t.Errorf("Expected \"%s\", got %v", errAccountName, err)
 	}
 
-	err = ReplaceOrAddGenericPassword(&attributes2)
+	err = RemoveAndAddGenericPassword(&attributes2)
 	if err.Error() != errAccountName {
 		t.Errorf("Expected \"%s\", got %v", errAccountName, err)
 	}
@@ -158,7 +173,7 @@ func TestGetAllAccountNames(t *testing.T) {
 	}
 
 	if len(accountNames) != len(attributes) {
-		t.Errorf("Expected %d accounts, got %d", len(attributes), len(accountNames))
+		t.Fatalf("Expected %d accounts, got %d", len(attributes), len(accountNames))
 	}
 
 	for i := 0; i < len(accountNames); i++ {
@@ -181,5 +196,41 @@ func TestGetAllAccountNames(t *testing.T) {
 
 	if len(accountNames) != 0 {
 		t.Errorf("Expected no accounts, got %d", len(accountNames))
+	}
+}
+
+// Test various edge conditions with RemoveAndAddGenericPassword().
+func TestRemoveAndAddGenericPassword(t *testing.T) {
+	attributes := GenericPasswordAttributes{
+		ServiceName: "osxkeychain_test with unicode テスト",
+		AccountName: "test account with unicode テスト",
+		Password:    "test password",
+	}
+
+	// Make sure that if a malicious actor adds an identical entry
+	// after the remove and before the add, an error is raised.
+	err := removeAndAddGenericPasswordHelper(&attributes, func() {
+		err := AddGenericPassword(&attributes)
+		if err != nil {
+			t.Error(err)
+		}
+	})
+	if err != ErrDuplicateItem {
+		t.Error(err)
+	}
+
+	// Make sure that RemoveAndAddGenericPassword() actually does
+	// remove an existing entry first.
+	err = removeAndAddGenericPasswordHelper(&attributes, func() {
+		_, err := FindGenericPassword(&attributes)
+		if err != ErrItemNotFound {
+			t.Error(err)
+		}
+	})
+
+	// Remove password.
+	err = FindAndRemoveGenericPassword(&attributes)
+	if err != nil {
+		t.Error(err)
 	}
 }
