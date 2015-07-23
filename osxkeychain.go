@@ -27,10 +27,11 @@ import (
 type GenericPasswordAttributes struct {
 	ServiceName string
 	AccountName string
-	Password    string
+	AccessGroup string
+	Data        []byte
 }
 
-func check32Bit(paramName, paramValue string) error {
+func check32Bit(paramName string, paramValue []byte) error {
 	if uint64(len(paramValue)) > math.MaxUint32 {
 		return errors.New(paramName + " has size overflowing 32 bits")
 	}
@@ -38,7 +39,7 @@ func check32Bit(paramName, paramValue string) error {
 }
 
 func check32BitUTF8(paramName, paramValue string) error {
-	if err := check32Bit(paramName, paramValue); err != nil {
+	if err := check32Bit(paramName, []byte(paramValue)); err != nil {
 		return err
 	}
 	if !utf8.ValidString(paramValue) {
@@ -54,7 +55,7 @@ func (attributes *GenericPasswordAttributes) CheckValidity() error {
 	if err := check32BitUTF8("AccountName", attributes.AccountName); err != nil {
 		return err
 	}
-	if err := check32Bit("Password", attributes.Password); err != nil {
+	if err := check32Bit("Password", attributes.Data); err != nil {
 		return err
 	}
 	return nil
@@ -108,37 +109,58 @@ func (ke keychainError) Error() string {
 	return fmt.Sprintf("keychainError with unknown error code %d", C.OSStatus(ke))
 }
 
-func AddGenericPassword(attributes *GenericPasswordAttributes) error {
+func AddGenericPassword(attributes *GenericPasswordAttributes) (err error) {
 	if err := attributes.CheckValidity(); err != nil {
 		return err
 	}
 
-	serviceName := C.CString(attributes.ServiceName)
-	defer C.free(unsafe.Pointer(serviceName))
+	var serviceNameString C.CFStringRef
+	if serviceNameString, err = _UTF8StringToCFString(attributes.ServiceName); err != nil {
+		return
+	}
+	defer C.CFRelease(C.CFTypeRef(serviceNameString))
 
-	accountName := C.CString(attributes.AccountName)
-	defer C.free(unsafe.Pointer(accountName))
+	var accountNameString C.CFStringRef
+	if accountNameString, err = _UTF8StringToCFString(attributes.AccountName); err != nil {
+		return
+	}
+	defer C.CFRelease(C.CFTypeRef(accountNameString))
 
-	password := unsafe.Pointer(C.CString(attributes.Password))
-	defer C.free(password)
+	var p *C.UInt8
+	if len(attributes.Data) > 0 {
+		p = (*C.UInt8)(&attributes.Data[0])
+	}
+	dataBytes := C.CFDataCreateWithBytesNoCopy(nil, p, C.CFIndex(len(attributes.Data)), nil)
+	//defer C.CFRelease(C.CFTypeRef(dataBytes))
 
-	errCode := C.SecKeychainAddGenericPassword(
-		nil, // default keychain
-		C.UInt32(len(attributes.ServiceName)),
-		serviceName,
-		C.UInt32(len(attributes.AccountName)),
-		accountName,
-		C.UInt32(len(attributes.Password)),
-		password,
-		nil,
-	)
+	query := map[C.CFTypeRef]C.CFTypeRef{
+		C.kSecClass:            C.kSecClassGenericPassword,
+		C.kSecAttrService:      C.CFTypeRef(serviceNameString),
+		C.kSecAttrAccount:      C.CFTypeRef(accountNameString),
+		C.kSecValueData:        C.CFTypeRef(dataBytes),
+	}
 
-	return newKeychainError(errCode)
+	if attributes.AccessGroup != "" {
+		var accessGroupString C.CFStringRef
+		if accessGroupString, err = _UTF8StringToCFString(attributes.AccessGroup); err != nil {
+			return
+		}
+		defer C.CFRelease(C.CFTypeRef(accessGroupString))
+		query[C.kSecAttrAccessGroup] = C.CFTypeRef(accessGroupString)
+	}
+
+	queryDict := mapToCFDictionary(query)
+	defer C.CFRelease(C.CFTypeRef(queryDict))
+
+	var resultsRef C.CFTypeRef
+	errCode := C.SecItemAdd(queryDict, &resultsRef)
+	err = newKeychainError(errCode)
+	return
 }
 
-func FindGenericPassword(attributes *GenericPasswordAttributes) (string, error) {
+func FindGenericPassword(attributes *GenericPasswordAttributes) ([]byte, error) {
 	if err := attributes.CheckValidity(); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	serviceName := C.CString(attributes.ServiceName)
@@ -163,12 +185,16 @@ func FindGenericPassword(attributes *GenericPasswordAttributes) (string, error) 
 	)
 
 	if err := newKeychainError(errCode); err != nil {
-		return "", err
+		return nil, err
+	}
+
+	if passwordLength == 0 {
+		return nil, nil
 	}
 
 	defer C.SecKeychainItemFreeContent(nil, password)
 
-	return C.GoStringN((*C.char)(password), C.int(passwordLength)), nil
+	return C.GoBytes(password, C.int(passwordLength)), nil
 }
 
 func FindAndRemoveGenericPassword(attributes *GenericPasswordAttributes) error {
