@@ -130,8 +130,8 @@ func AddGenericPassword(attributes *GenericPasswordAttributes) (err error) {
 	if len(attributes.Data) > 0 {
 		p = (*C.UInt8)(&attributes.Data[0])
 	}
-	dataBytes := C.CFDataCreateWithBytesNoCopy(nil, p, C.CFIndex(len(attributes.Data)), nil)
-	//defer C.CFRelease(C.CFTypeRef(dataBytes))
+	dataBytes := C.CFDataCreate(nil, p, C.CFIndex(len(attributes.Data)))
+	defer C.CFRelease(C.CFTypeRef(dataBytes))
 
 	query := map[C.CFTypeRef]C.CFTypeRef{
 		C.kSecClass:            C.kSecClassGenericPassword,
@@ -152,8 +152,8 @@ func AddGenericPassword(attributes *GenericPasswordAttributes) (err error) {
 	queryDict := mapToCFDictionary(query)
 	defer C.CFRelease(C.CFTypeRef(queryDict))
 
-	var resultsRef C.CFTypeRef
-	errCode := C.SecItemAdd(queryDict, &resultsRef)
+	errCode := C.SecItemAdd(queryDict, nil)
+
 	err = newKeychainError(errCode)
 	return
 }
