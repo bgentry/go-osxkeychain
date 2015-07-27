@@ -11,6 +11,7 @@ package osxkeychain
 #include <stdlib.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
+#include "keychain.h"
 */
 import "C"
 
@@ -346,16 +347,56 @@ func GetAllAccountNames(serviceName string) (accountNames []string, err error) {
 
 	defer C.CFRelease(resultsRef)
 
+	// Check that the resultsRef is an array
+	typeId := C.CFGetTypeID(resultsRef)
+	if typeId != C.CFArrayGetTypeID() {
+		err = fmt.Errorf("Invalid result type: %s", _CFStringToUTF8String(C.CFCopyTypeIDDescription(typeId)))
+		return
+	}
+
 	results := _CFArrayToArray(C.CFArrayRef(resultsRef))
 	for _, result := range results {
 		m := _CFDictionaryToMap(C.CFDictionaryRef(result))
 		resultServiceName := _CFStringToUTF8String(C.CFStringRef(m[C.kSecAttrService]))
 		if resultServiceName != serviceName {
-			err = errors.New(fmt.Sprintf("Expected service name %s, got %s", serviceName, resultServiceName))
+			err = fmt.Errorf("Expected service name %s, got %s", serviceName, resultServiceName)
 			return
 		}
 		accountName := _CFStringToUTF8String(C.CFStringRef(m[C.kSecAttrAccount]))
 		accountNames = append(accountNames, accountName)
 	}
 	return
+}
+
+
+// Add a generic password keychain item with access for the specified application (and ourself).
+// This allows us to create a keychain item and allow access for an additional application or executable.
+func AddGenericPasswordWithApplication(serviceName string, accountName string, data []byte, applicationPath string) (err error) {
+	var cfServiceName C.CFStringRef
+	if cfServiceName, err = _UTF8StringToCFString(serviceName); err != nil {
+		return
+	}
+	defer C.CFRelease(C.CFTypeRef(cfServiceName))
+
+	var cfAccountName C.CFStringRef
+	if cfAccountName, err = _UTF8StringToCFString(accountName); err != nil {
+		return
+	}
+	defer C.CFRelease(C.CFTypeRef(cfAccountName))
+
+	var cfApplicationPath C.CFStringRef
+	if cfApplicationPath, err = _UTF8StringToCFString(applicationPath); err != nil {
+		return
+	}
+	defer C.CFRelease(C.CFTypeRef(cfApplicationPath))
+
+	var p *C.UInt8
+	if len(data) > 0 {
+	   p = (*C.UInt8)(&data[0])
+	}
+	cfData := C.CFDataCreate(nil, p, C.CFIndex(len(data)))
+	defer C.CFRelease(C.CFTypeRef(cfData))
+
+	errCode := C.GHKeychainCreateItemForApplication(cfServiceName, cfAccountName, cfData, cfApplicationPath, nil);
+	return newKeychainError(errCode)
 }

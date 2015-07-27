@@ -234,3 +234,21 @@ func TestRemoveAndAddGenericPassword(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+func TestAddGenericPasswordWithApplicationAccess(t *testing.T) {
+	serviceName := "osxkeychain_test"
+	accountName := "test account"
+	applicationPath := "/Applications/Mail.app"
+	data := []byte("testdata")
+
+	err := AddGenericPasswordWithApplication(serviceName, accountName, data, applicationPath)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Cleanup
+	err = FindAndRemoveGenericPassword(&GenericPasswordAttributes{ServiceName: serviceName, AccountName: accountName})
+	if err != nil {
+		t.Error(err)
+	}
+}
