@@ -11,7 +11,6 @@ package osxkeychain
 #include <stdlib.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <Security/Security.h>
-#include "keychain.h"
 */
 import "C"
 
@@ -26,12 +25,13 @@ import (
 // All string fields must have size that fits in 32 bits. All string
 // fields except for Password must be encoded in UTF-8.
 type GenericPasswordAttributes struct {
-	ServiceName string
-	AccountName string
-	Password    string
+	ServiceName         string
+	AccountName         string
+	Password            []byte
+	TrustedApplications []string
 }
 
-func check32Bit(paramName, paramValue string) error {
+func check32Bit(paramName string, paramValue []byte) error {
 	if uint64(len(paramValue)) > math.MaxUint32 {
 		return errors.New(paramName + " has size overflowing 32 bits")
 	}
@@ -39,8 +39,8 @@ func check32Bit(paramName, paramValue string) error {
 }
 
 func check32BitUTF8(paramName, paramValue string) error {
-	if err := check32Bit(paramName, paramValue); err != nil {
-		return err
+	if uint64(len(paramValue)) > math.MaxUint32 {
+		return errors.New(paramName + " has size overflowing 32 bits")
 	}
 	if !utf8.ValidString(paramValue) {
 		return errors.New(paramName + " is not a valid UTF-8 string")
@@ -109,32 +109,50 @@ func (ke keychainError) Error() string {
 	return fmt.Sprintf("keychainError with unknown error code %d", C.OSStatus(ke))
 }
 
-func AddGenericPassword(attributes *GenericPasswordAttributes) error {
-	if err := attributes.CheckValidity(); err != nil {
-		return err
+func AddGenericPassword(attributes *GenericPasswordAttributes) (err error) {
+	if err = attributes.CheckValidity(); err != nil {
+		return
 	}
 
-	serviceName := C.CString(attributes.ServiceName)
-	defer C.free(unsafe.Pointer(serviceName))
+	var serviceNameString C.CFStringRef
+	if serviceNameString, err = _UTF8StringToCFString(attributes.ServiceName); err != nil {
+		return
+	}
+	defer C.CFRelease(C.CFTypeRef(serviceNameString))
 
-	accountName := C.CString(attributes.AccountName)
-	defer C.free(unsafe.Pointer(accountName))
+	var accountNameString C.CFStringRef
+	if accountNameString, err = _UTF8StringToCFString(attributes.AccountName); err != nil {
+		return
+	}
+	defer C.CFRelease(C.CFTypeRef(accountNameString))
 
-	password := unsafe.Pointer(C.CString(attributes.Password))
-	defer C.free(password)
+	dataBytes := C.CFTypeRef(bytesToCFData(attributes.Password))
+	defer C.CFRelease(dataBytes)
 
-	errCode := C.SecKeychainAddGenericPassword(
-		nil, // default keychain
-		C.UInt32(len(attributes.ServiceName)),
-		serviceName,
-		C.UInt32(len(attributes.AccountName)),
-		accountName,
-		C.UInt32(len(attributes.Password)),
-		password,
-		nil,
-	)
+	query := map[C.CFTypeRef]C.CFTypeRef{
+		C.kSecClass:       C.kSecClassGenericPassword,
+		C.kSecAttrService: C.CFTypeRef(serviceNameString),
+		C.kSecAttrAccount: C.CFTypeRef(accountNameString),
+		C.kSecValueData:   dataBytes,
+	}
 
-	return newKeychainError(errCode)
+	access, err := createAccess(attributes.ServiceName, attributes.TrustedApplications)
+	if err != nil {
+		return
+	}
+
+	if access != nil {
+		defer C.CFRelease(C.CFTypeRef(access))
+		query[C.kSecAttrAccess] = C.CFTypeRef(access)
+	}
+
+	queryDict := mapToCFDictionary(query)
+	defer C.CFRelease(C.CFTypeRef(queryDict))
+
+	errCode := C.SecItemAdd(queryDict, nil)
+
+	err = newKeychainError(errCode)
+	return
 }
 
 func FindGenericPassword(attributes *GenericPasswordAttributes) (string, error) {
@@ -311,6 +329,20 @@ func _CFDictionaryToMap(cfDict C.CFDictionaryRef) (m map[C.CFTypeRef]C.CFTypeRef
 	return
 }
 
+// The returned CFArrayRef, if non-nil, must be released via CFRelease.
+func arrayToCFArray(a []C.CFTypeRef) C.CFArrayRef {
+	var values []unsafe.Pointer
+	for _, value := range a {
+		values = append(values, unsafe.Pointer(value))
+	}
+	numValues := len(values)
+	var valuesPointer *unsafe.Pointer
+	if numValues > 0 {
+		valuesPointer = &values[0]
+	}
+	return C.CFArrayCreate(nil, valuesPointer, C.CFIndex(numValues), &C.kCFTypeArrayCallBacks)
+}
+
 func _CFArrayToArray(cfArray C.CFArrayRef) (a []C.CFTypeRef) {
 	count := C.CFArrayGetCount(cfArray)
 	if count > 0 {
@@ -318,6 +350,15 @@ func _CFArrayToArray(cfArray C.CFArrayRef) (a []C.CFTypeRef) {
 		C.CFArrayGetValues(cfArray, C.CFRange{0, count}, (*unsafe.Pointer)(&a[0]))
 	}
 	return
+}
+
+// The returned CFDataRef, if non-nil, must be released via CFRelease.
+func bytesToCFData(b []byte) C.CFDataRef {
+	var p *C.UInt8
+	if len(b) > 0 {
+		p = (*C.UInt8)(&b[0])
+	}
+	return C.CFDataCreate(nil, p, C.CFIndex(len(b)))
 }
 
 func GetAllAccountNames(serviceName string) (accountNames []string, err error) {
@@ -350,7 +391,9 @@ func GetAllAccountNames(serviceName string) (accountNames []string, err error) {
 	// Check that the resultsRef is an array
 	typeId := C.CFGetTypeID(resultsRef)
 	if typeId != C.CFArrayGetTypeID() {
-		err = fmt.Errorf("Invalid result type: %s", _CFStringToUTF8String(C.CFCopyTypeIDDescription(typeId)))
+		typeDesc := C.CFCopyTypeIDDescription(typeId)
+		defer C.CFRelease(C.CFTypeRef(typeDesc))
+		err = fmt.Errorf("Invalid result type: %s", _CFStringToUTF8String(typeDesc))
 		return
 	}
 
@@ -368,35 +411,59 @@ func GetAllAccountNames(serviceName string) (accountNames []string, err error) {
 	return
 }
 
-
-// Add a generic password keychain item with access for the specified application (and ourself).
-// This allows us to create a keychain item and allow access for an additional application or executable.
-func AddGenericPasswordWithApplication(serviceName string, accountName string, data []byte, applicationPath string) (err error) {
-	var cfServiceName C.CFStringRef
-	if cfServiceName, err = _UTF8StringToCFString(serviceName); err != nil {
-		return
+// The returned SecTrustedApplicationRef, if non-nil, must be released via CFRelease.
+func createTrustedApplication(trustedApplication string) (C.CFTypeRef, error) {
+	var trustedApplicationCStr *C.char
+	if trustedApplication != "" {
+		trustedApplicationCStr = C.CString(trustedApplication)
+		defer C.free(unsafe.Pointer(trustedApplicationCStr))
 	}
-	defer C.CFRelease(C.CFTypeRef(cfServiceName))
 
-	var cfAccountName C.CFStringRef
-	if cfAccountName, err = _UTF8StringToCFString(accountName); err != nil {
-		return
+	var trustedApplicationRef C.SecTrustedApplicationRef
+	errCode := C.SecTrustedApplicationCreateFromPath(trustedApplicationCStr, &trustedApplicationRef)
+	err := newKeychainError(errCode)
+	if err != nil {
+		return nil, err
 	}
-	defer C.CFRelease(C.CFTypeRef(cfAccountName))
 
-	var cfApplicationPath C.CFStringRef
-	if cfApplicationPath, err = _UTF8StringToCFString(applicationPath); err != nil {
-		return
+	return C.CFTypeRef(trustedApplicationRef), nil
+}
+
+// The returned SecAccessRef, if non-nil, must be released via CFRelease.
+func createAccess(label string, trustedApplications []string) (C.SecAccessRef, error) {
+	if len(trustedApplications) == 0 {
+		return nil, nil
 	}
-	defer C.CFRelease(C.CFTypeRef(cfApplicationPath))
 
-	var p *C.UInt8
-	if len(data) > 0 {
-	   p = (*C.UInt8)(&data[0])
+	// Always prepend with empty string which signifies that we
+	// include a NULL application, which means ourselves.
+	trustedApplications = append([]string{""}, trustedApplications...)
+
+	var err error
+	var labelRef C.CFStringRef
+	if labelRef, err = _UTF8StringToCFString(label); err != nil {
+		return nil, err
 	}
-	cfData := C.CFDataCreate(nil, p, C.CFIndex(len(data)))
-	defer C.CFRelease(C.CFTypeRef(cfData))
+	defer C.CFRelease(C.CFTypeRef(labelRef))
 
-	errCode := C.GHKeychainCreateItemForApplication(cfServiceName, cfAccountName, cfData, cfApplicationPath, nil);
-	return newKeychainError(errCode)
+	var trustedApplicationsRefs []C.CFTypeRef
+	for _, trustedApplication := range trustedApplications {
+		trustedApplicationRef, err := createTrustedApplication(trustedApplication)
+		if err != nil {
+			return nil, err
+		}
+		defer C.CFRelease(C.CFTypeRef(trustedApplicationRef))
+		trustedApplicationsRefs = append(trustedApplicationsRefs, trustedApplicationRef)
+	}
+
+	var access C.SecAccessRef
+	trustedApplicationsArray := arrayToCFArray(trustedApplicationsRefs)
+	defer C.CFRelease(C.CFTypeRef(trustedApplicationsArray))
+	errCode := C.SecAccessCreate(labelRef, trustedApplicationsArray, &access)
+	err = newKeychainError(errCode)
+	if err != nil {
+		return nil, err
+	}
+
+	return access, nil
 }
