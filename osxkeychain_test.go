@@ -29,7 +29,7 @@ func TestGenericPassword(t *testing.T) {
 		t.Error(err)
 	}
 
-	if password != "" {
+	if string(password) != "" {
 		t.Errorf("FindGenericPassword expected empty string, got %s", password)
 	}
 
@@ -40,14 +40,14 @@ func TestGenericPassword(t *testing.T) {
 	}
 
 	// Replace password with an empty password.
-	attributes.Password = ""
+	attributes.Password = []byte("")
 	err = RemoveAndAddGenericPassword(&attributes)
 	if err != nil {
 		t.Error(err)
 	}
 
 	// Replace password with a non-empty password.
-	expectedPassword := "long test password \000 with invalid UTF-8 \xc3\x28 and embedded nuls \000"
+	expectedPassword := []byte("long test password \000 with invalid UTF-8 \xc3\x28 and embedded nuls \000")
 	attributes.Password = expectedPassword
 	err = RemoveAndAddGenericPassword(&attributes)
 	if err != nil {
@@ -60,7 +60,7 @@ func TestGenericPassword(t *testing.T) {
 		t.Error(err)
 	}
 
-	if password != expectedPassword {
+	if string(password) != string(expectedPassword) {
 		t.Errorf("FindGenericPassword expected %s, got %q", expectedPassword, password)
 	}
 
@@ -204,7 +204,7 @@ func TestRemoveAndAddGenericPassword(t *testing.T) {
 	attributes := GenericPasswordAttributes{
 		ServiceName: "osxkeychain_test with unicode テスト",
 		AccountName: "test account with unicode テスト",
-		Password:    "test password",
+		Password:    []byte("test password"),
 	}
 
 	// Make sure that if a malicious actor adds an identical entry
@@ -229,6 +229,25 @@ func TestRemoveAndAddGenericPassword(t *testing.T) {
 	})
 
 	// Remove password.
+	err = FindAndRemoveGenericPassword(&attributes)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestGenericPasswordWithApplicationAccess(t *testing.T) {
+	attributes := GenericPasswordAttributes{
+		ServiceName:         "osxkeychain_test",
+		AccountName:         "test account",
+		Password:            []byte("test"),
+		TrustedApplications: []string{"/Applications/Mail.app"},
+	}
+
+	err := AddGenericPassword(&attributes)
+	if err != nil {
+		t.Error(err)
+	}
+
 	err = FindAndRemoveGenericPassword(&attributes)
 	if err != nil {
 		t.Error(err)
