@@ -24,6 +24,11 @@ import (
 
 // All string fields must have size that fits in 32 bits. All string
 // fields except for Password must be encoded in UTF-8.
+//
+// TrustedApplications is a list of additional application (paths)
+// that should have access to the keychain item. The application
+// that creates the keychain item always has access, so this list
+// is for additional apps or executables.
 type GenericPasswordAttributes struct {
 	ServiceName         string
 	AccountName         string
@@ -57,6 +62,11 @@ func (attributes *GenericPasswordAttributes) CheckValidity() error {
 	}
 	if err := check32Bit("Password", attributes.Password); err != nil {
 		return err
+	}
+	for _, trustedApplication := range attributes.TrustedApplications {
+		if err := check32BitUTF8("TrustedApplications", trustedApplication); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -126,14 +136,14 @@ func AddGenericPassword(attributes *GenericPasswordAttributes) (err error) {
 	}
 	defer C.CFRelease(C.CFTypeRef(accountNameString))
 
-	dataBytes := C.CFTypeRef(bytesToCFData(attributes.Password))
-	defer C.CFRelease(dataBytes)
+	dataBytes := bytesToCFData(attributes.Password)
+	defer C.CFRelease(C.CFTypeRef(dataBytes))
 
 	query := map[C.CFTypeRef]C.CFTypeRef{
 		C.kSecClass:       C.kSecClassGenericPassword,
 		C.kSecAttrService: C.CFTypeRef(serviceNameString),
 		C.kSecAttrAccount: C.CFTypeRef(accountNameString),
-		C.kSecValueData:   dataBytes,
+		C.kSecValueData:   C.CFTypeRef(dataBytes),
 	}
 
 	access, err := createAccess(attributes.ServiceName, attributes.TrustedApplications)
@@ -155,9 +165,9 @@ func AddGenericPassword(attributes *GenericPasswordAttributes) (err error) {
 	return
 }
 
-func FindGenericPassword(attributes *GenericPasswordAttributes) (string, error) {
+func FindGenericPassword(attributes *GenericPasswordAttributes) ([]byte, error) {
 	if err := attributes.CheckValidity(); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	serviceName := C.CString(attributes.ServiceName)
@@ -182,12 +192,12 @@ func FindGenericPassword(attributes *GenericPasswordAttributes) (string, error) 
 	)
 
 	if err := newKeychainError(errCode); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	defer C.SecKeychainItemFreeContent(nil, password)
 
-	return C.GoStringN((*C.char)(password), C.int(passwordLength)), nil
+	return C.GoBytes(password, C.int(passwordLength)), nil
 }
 
 func FindAndRemoveGenericPassword(attributes *GenericPasswordAttributes) error {
@@ -388,7 +398,8 @@ func GetAllAccountNames(serviceName string) (accountNames []string, err error) {
 
 	defer C.CFRelease(resultsRef)
 
-	// Check that the resultsRef is an array
+	// The resultsRef should always be an array (because kSecReturnAttributes is true)
+	// but it's a good sanity check and useful if want to support kSecReturnRef in the future.
 	typeId := C.CFGetTypeID(resultsRef)
 	if typeId != C.CFArrayGetTypeID() {
 		typeDesc := C.CFCopyTypeIDDescription(typeId)

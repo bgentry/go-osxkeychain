@@ -29,7 +29,7 @@ func TestGenericPassword(t *testing.T) {
 		t.Error(err)
 	}
 
-	if password != "" {
+	if string(password) != "" {
 		t.Errorf("FindGenericPassword expected empty string, got %s", password)
 	}
 
